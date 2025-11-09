@@ -787,121 +787,164 @@ identity-parachain/
 │           └── animations.css
 │
 │
-├── mobile/                       # Mobile App (React Native)
-│   ├── package.json
-│   ├── app.json
-│   ├── tsconfig.json
-│   ├── .env.example
-│   │
-│   ├── ios/                      # iOS native code
-│   │   └── Podfile
-│   │
-│   ├── android/                  # Android native code
-│   │   └── build.gradle
-│   │
-│   └── src/
-│       ├── App.tsx
-│       ├── index.ts
-│       │
-│       ├── navigation/
-│       │   ├── RootNavigator.tsx
-│       │   ├── AuthStack.tsx
-│       │   └── AppStack.tsx
-│       │
-│       ├── screens/
-│       │   ├── auth/
-│       │   │   ├── LoginScreen.tsx
-│       │   │   ├── RegisterScreen.tsx
-│       │   │   └── RecoveryScreen.tsx
-│       │   │
-│       │   ├── identity/
-│       │   │   ├── CreateDIDScreen.tsx
-│       │   │   ├── IdentityDetailsScreen.tsx
-│       │   │   └── ManageIdentityScreen.tsx
-│       │   │
-│       │   ├── credentials/
-│       │   │   ├── CredentialListScreen.tsx
-│       │   │   ├── CredentialDetailScreen.tsx
-│       │   │   ├── ShareCredentialScreen.tsx
-│       │   │   └── QRCodeScreen.tsx
-│       │   │
-│       │   ├── proof/
-│       │   │   ├── GenerateProofScreen.tsx
-│       │   │   ├── ProofConfirmScreen.tsx
-│       │   │   └── ProofHistoryScreen.tsx
-│       │   │
-│       │   └── settings/
-│       │       ├── SettingsScreen.tsx
-│       │       ├── BiometricScreen.tsx
-│       │       └── BackupScreen.tsx
-│       │
-│       ├── components/
-│       │   ├── common/
-│       │   │   ├── Button.tsx
-│       │   │   ├── Input.tsx
-│       │   │   ├── Card.tsx
-│       │   │   └── Loading.tsx
-│       │   │
-│       │   ├── credential/
-│       │   │   ├── CredentialCard.tsx
-│       │   │   ├── FieldSelector.tsx
-│       │   │   └── ProofPreview.tsx
-│       │   │
-│       │   └── identity/
-│       │       ├── IdentityCard.tsx
-│       │       ├── DIDDisplay.tsx
-│       │       └── KeyPairManager.tsx
-│       │
-│       ├── services/
-│       │   ├── substrate/
-│       │   │   ├── api.ts
-│       │   │   ├── types.ts
-│       │   │   └── utils.ts
-│       │   │
-│       │   ├── crypto/
-│       │   │   ├── keyManagement.ts
-│       │   │   ├── signature.ts
-│       │   │   └── zk.ts
-│       │   │
-│       │   ├── storage/
-│       │   │   ├── localStorage.ts
-│       │   │   ├── secureStorage.ts
-│       │   │   └── biometric.ts
-│       │   │
-│       │   └── qr/
-│       │       ├── qrGenerator.ts
-│       │       └── qrScanner.ts
-│       │
-│       ├── redux/
-│       │   ├── store.ts
-│       │   ├── slices/
-│       │   │   ├── auth.ts
-│       │   │   ├── identity.ts
-│       │   │   ├── credentials.ts
-│       │   │   └── ui.ts
-│       │   └── hooks.ts
-│       │
-│       ├── hooks/
-│       │   ├── useSubstrate.ts
-│       │   ├── useCredentials.ts
-│       │   ├── useBiometric.ts
-│       │   └── useProof.ts
-│       │
-│       ├── types/
-│       │   ├── index.ts
-│       │   ├── credential.ts
-│       │   └── identity.ts
-│       │
-│       ├── utils/
-│       │   ├── formatting.ts
-│       │   ├── validation.ts
-│       │   └── errors.ts
-│       │
-│       └── styles/
-│           ├── theme.ts
-│           ├── colors.ts
-│           └── spacing.ts
+├──mobile/                                    # Mobile App (Expo + Expo Router)
 │
+├── package.json
+├── app.json                              # Expo configuration
+├── tsconfig.json
+├── babel.config.js
+├── .env.example
+│
+├── .expo/                                # Expo cache (auto-generated)
+│
+├── assets/                               # Static assets
+│   ├── images/
+│   │   ├── logo.png
+│   │   ├── wallet-icon.png
+│   │   └── ...
+│   ├── fonts/
+│   │   ├── Roboto-Regular.ttf
+│   │   └── ...
+│   └── icons/
+│       ├── home.svg
+│       ├── wallet.svg
+│       └── ...
+│
+├── app/                                  # Expo Router routing (app directory)
+│   ├── _layout.tsx                       # Root layout
+│   ├── +not-found.tsx                    # 404 screen
+│   │
+│   ├── (auth)/                           # Auth group
+│   │   ├── _layout.tsx
+│   │   ├── login.tsx
+│   │   ├── register.tsx
+│   │   └── recovery.tsx
+│   │
+│   ├── (wallet)/                         # Main app group
+│   │   ├── _layout.tsx
+│   │   ├── index.tsx                     # Dashboard
+│   │   │
+│   │   ├── identity/
+│   │   │   ├── _layout.tsx
+│   │   │   ├── index.tsx                 # Identity list
+│   │   │   ├── [id].tsx                  # Identity details
+│   │   │   ├── create.tsx                # Create DID
+│   │   │   └── manage.tsx                # Manage identity
+│   │   │
+│   │   ├── credentials/
+│   │   │   ├── _layout.tsx
+│   │   │   ├── index.tsx                 # Credentials list
+│   │   │   ├── [id].tsx                  # Credential details
+│   │   │   ├── share.tsx                 # Share credential
+│   │   │   └── qr.tsx                    # QR code view
+│   │   │
+│   │   ├── proof/
+│   │   │   ├── _layout.tsx
+│   │   │   ├── index.tsx                 # Generate proof
+│   │   │   ├── confirm.tsx               # Proof confirmation
+│   │   │   └── history.tsx               # Proof history
+│   │   │
+│   │   └── settings/
+│   │       ├── _layout.tsx
+│   │       ├── index.tsx                 # Settings
+│   │       ├── biometric.tsx             # Biometric setup
+│   │       └── backup.tsx                # Backup recovery
+│
+├── src/                                  # Shared source code
+│   │
+│   ├── components/
+│   │   ├── common/
+│   │   │   ├── Button.tsx
+│   │   │   ├── Input.tsx
+│   │   │   ├── Card.tsx
+│   │   │   ├── Loading.tsx
+│   │   │   └── Modal.tsx
+│   │   │
+│   │   ├── credential/
+│   │   │   ├── CredentialCard.tsx
+│   │   │   ├── FieldSelector.tsx
+│   │   │   └── ProofPreview.tsx
+│   │   │
+│   │   ├── identity/
+│   │   │   ├── IdentityCard.tsx
+│   │   │   ├── DIDDisplay.tsx
+│   │   │   └── KeyPairManager.tsx
+│   │   │
+│   │   └── layout/
+│   │       ├── SafeAreaView.tsx
+│   │       ├── Header.tsx
+│   │       └── TabBar.tsx
+│   │
+│   ├── services/
+│   │   ├── substrate/
+│   │   │   ├── api.ts                    # Polkadot.js setup
+│   │   │   ├── calls.ts                  # Extrinsic calls
+│   │   │   ├── queries.ts                # Storage queries
+│   │   │   ├── types.ts                  # Substrate types
+│   │   │   └── utils.ts                  # Helper utilities
+│   │   │
+│   │   ├── crypto/
+│   │   │   ├── keyManagement.ts          # Key generation/storage
+│   │   │   ├── signature.ts              # Signing operations
+│   │   │   └── zk.ts                     # ZK proof generation
+│   │   │
+│   │   ├── storage/
+│   │   │   ├── localStorage.ts           # AsyncStorage wrapper
+│   │   │   ├── secureStorage.ts          # Encrypted storage (SecureStore)
+│   │   │   └── biometric.ts              # Biometric auth
+│   │   │
+│   │   └── qr/
+│   │       ├── qrGenerator.ts            # Generate QR codes
+│   │       └── qrScanner.ts              # Scan QR codes
+│   │
+│   ├── store/                            # State management (Zustand/Redux)
+│   │   ├── authStore.ts                  # Auth state
+│   │   ├── identityStore.ts              # Identity state
+│   │   ├── credentialStore.ts            # Credential state
+│   │   ├── uiStore.ts                    # UI state
+│   │   └── index.ts                      # Store setup
+│   │
+│   ├── hooks/
+│   │   ├── useAuth.ts
+│   │   ├── useSubstrate.ts
+│   │   ├── useCredentials.ts
+│   │   ├── useBiometric.ts
+│   │   ├── useProof.ts
+│   │   └── useNavigation.ts
+│   │
+│   ├── types/
+│   │   ├── index.ts                      # Type exports
+│   │   ├── credential.ts                 # Credential types
+│   │   ├── identity.ts                   # Identity types
+│   │   ├── api.ts                        # API types
+│   │   └── substrate.ts                  # Substrate types
+│   │
+│   ├── utils/
+│   │   ├── formatting.ts                 # Format helpers
+│   │   ├── validation.ts                 # Form validation
+│   │   ├── substrate.ts                  # Substrate utilities
+│   │   ├── errors.ts                     # Error handling
+│   │   └── constants.ts                  # App constants
+│   │
+│   ├── styles/
+│   │   ├── colors.ts                     # Color palette
+│   │   ├── spacing.ts                    # Spacing tokens
+│   │   ├── typography.ts                 # Font styles
+│   │   └── theme.ts                      # Theme config
+│   │
+│   └── config/
+│       ├── env.ts                        # Environment config
+│       └── substrate.ts                  # Substrate config
+│
+├── __tests__/                            # Tests
+│   ├── components/
+│   │   └── Button.test.tsx
+│   ├── services/
+│   │   └── crypto.test.ts
+│   └── hooks/
+│       └── useAuth.test.ts
+│
+└── eas.json                              # EAS Build config
 │
 ├── docs/                         # Documentation
 │   ├── ARCHITECTURE.md
