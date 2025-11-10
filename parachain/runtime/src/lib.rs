@@ -319,9 +319,18 @@ mod runtime {
 	#[runtime::pallet_index(33)]
 	pub type MessageQueue = pallet_message_queue;
 
-	// Template
-	#[runtime::pallet_index(50)]
-	pub type TemplatePallet = pallet_parachain_template;
+	#[runtime::pallet_index(52)]
+    pub type ZkCredentials = pallet_zk_credentials;
+    #[runtime::pallet_index(53)]
+    pub type IdentityRegistry = pallet_identity_registry;
+    #[runtime::pallet_index(54)]
+    pub type VerifiableCredentials = pallet_verifiable_credentials;
+    #[runtime::pallet_index(55)]
+    pub type CredentialGovernance = pallet_credential_governance;
+    #[runtime::pallet_index(56)]
+    pub type XcmCredentials = pallet_xcm_credentials;
+
+
 }
 
 impl pallet_timestamp::Config for Runtime {
@@ -379,6 +388,7 @@ impl pallet_identity_registry::Config for Runtime {
 impl pallet_verifiable_credentials::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type TimeProvider = Timestamp;
+    type ZkCredentials = Runtime; // Link to the ZK Credentials pallet
 }
 
 impl pallet_zk_credentials::Config for Runtime {

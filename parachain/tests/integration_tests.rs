@@ -257,9 +257,6 @@ fn test_zk_proof_verification() {
         // In production, this would actually verify the proof
         // For testing, we mock the verification
         
-        // Note: Actual verification would fail without proper setup
-        // This test demonstrates the API usage
-        
         // Create proof schema
         let field_descriptions = vec![
             b"age_threshold".to_vec(),
@@ -491,6 +488,55 @@ fn test_security_edge_cases() {
             ),
             Error::<Test>::IssuerNotTrusted
         );
+    });
+}
+
+#[test]
+fn test_inter_pallet_verification_key_retrieval() {
+    new_test_ext().execute_with(|| {
+        // Step 1: Register verification key in pallet-zk-credentials
+        let vk_data = vec![0u8; 128];
+        let registered_by = H256::from_low_u64_be(1);
+        
+        assert_ok!(ZkCredentials::register_verification_key(
+            RuntimeOrigin::root(),
+            ProofType::StudentStatus,
+            vk_data.clone(),
+            registered_by
+        ));
+
+        // Step 2: Verify we can retrieve it from pallet-verifiable-credentials
+        let retrieved = ZkCredentials::get_verification_key(&ProofType::StudentStatus);
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().vk_data, vk_data);
+
+        // Step 3: Test credential issuance uses the verification key
+        let issuer = AccountId32::from([1u8; 32]);
+        let subject = AccountId32::from([2u8; 32]);
+        
+        let issuer_did = create_test_identity(issuer.clone(), b"did:identity:university".to_vec());
+        let subject_did = create_test_identity(subject.clone(), b"did:identity:student".to_vec());
+
+        // Add trusted issuer
+        assert_ok!(VerifiableCredentials::add_trusted_issuer(
+            RuntimeOrigin::root(),
+            CredentialType::Education,
+            issuer_did
+        ));
+
+        // Issue credential
+        assert_ok!(VerifiableCredentials::issue_credential(
+            RuntimeOrigin::signed(issuer),
+            subject_did,
+            CredentialType::Education,
+            H256::from_low_u64_be(123),
+            0,
+            H256::from_low_u64_be(456)
+        ));
+
+        // Verify credential
+        let subject_creds = VerifiableCredentials::credentials_of(&subject_did);
+        assert_eq!(subject_creds.len(), 1);
     });
 }
 

@@ -18,6 +18,9 @@ sp-core = { version = "21.0.0", default-features = false, git = "https://github.
 sp-io = { version = "23.0.0", default-features = false, git = "https://github.com/paritytech/polkadot-sdk.git", branch = "polkadot-v1.0.0" }
 sp-runtime = { version = "24.0.0", default-features = false, git = "https://github.com/paritytech/polkadot-sdk.git", branch = "polkadot-v1.0.0" }
 pallet-identity-registry = { path = "../pallet-identity-registry", default-features = false }
+pallet-zk-credentials = { path = "../pallet-zk-credentials", default-features = false }
+serde = { version = "1.0", features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
 
 [dev-dependencies]
 sp-io = { version = "23.0.0", git = "https://github.com/paritytech/polkadot-sdk.git", branch = "polkadot-v1.0.0" }
@@ -35,6 +38,9 @@ std = [
     "sp-io/std",
     "sp-runtime/std",
     "pallet-identity-registry/std",
+    "pallet-zk-credentials/std",
+    "serde",
+    "serde_json"
 ]
 runtime-benchmarks = ["frame-benchmarking/runtime-benchmarks"]
 try-runtime = ["frame-support/try-runtime"]

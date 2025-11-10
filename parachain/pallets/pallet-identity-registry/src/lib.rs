@@ -100,18 +100,14 @@ pub mod pallet {
 
     #[pallet::error]
     pub enum Error<T> {
-        /// Identity already exists
         IdentityAlreadyExists,
-        /// Identity not found
         IdentityNotFound,
-        /// Not the identity controller
         NotController,
-        /// Identity is inactive
         IdentityInactive,
-        /// Account already has an identity
         AccountAlreadyHasIdentity,
-        /// DID document not found
         DidDocumentNotFound,
+        InvalidDidFormat,
+        InvalidPublicKey,
     }
 
     #[pallet::call]
@@ -126,14 +122,27 @@ pub mod pallet {
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-            // Check if account already has an identity
-            ensure!(!AccountDids::<T>::contains_key(&who), Error::<T>::AccountAlreadyHasIdentity);
+            ensure!(
+                Self::validate_did_format(&did),
+                Error::<T>::InvalidDidFormat 
+            );
 
-            // Generate DID hash
+            ensure!(
+                Self::validate_public_key(&public_key),
+                Error::<T>::InvalidPublicKey 
+            );
+
+            ensure!(
+                !AccountDids::<T>::contains_key(&who),
+                Error::<T>::AccountAlreadyHasIdentity
+            );
+
             let did_hash = Self::hash_did(&did);
 
-            // Check if identity already exists
-            ensure!(!Identities::<T>::contains_key(&did_hash), Error::<T>::IdentityAlreadyExists);
+            ensure!(
+                !Identities::<T>::contains_key(&did_hash),
+                Error::<T>::IdentityAlreadyExists
+            );
 
             let now = T::TimeProvider::now().as_secs();
 
@@ -145,7 +154,6 @@ pub mod pallet {
                 active: true,
             };
 
-            // Create basic DID document
             let did_document = DidDocument {
                 did: did.clone(),
                 public_keys: sp_std::vec![public_key],
@@ -153,7 +161,6 @@ pub mod pallet {
                 services: sp_std::vec![],
             };
 
-            // Store identity and DID document
             Identities::<T>::insert(&did_hash, identity);
             AccountDids::<T>::insert(&who, did_hash);
             DidDocuments::<T>::insert(&did_hash, did_document);
@@ -293,6 +300,43 @@ pub mod pallet {
                 }
             }
             None
+        }
+    }
+
+    impl<T: Config> Pallet<T> {
+        /// Validate DID format according to W3C spec
+        /// DID format: did:<method>:<method-specific-id>
+        fn validate_did_format(did: &[u8]) -> bool {
+            // Minimum length: "did:x:y" = 7 bytes
+            if did.len() < 7 || did.len() > 255 {
+                return false;
+            }
+
+            // Must start with "did:"
+            if !did.starts_with(b"did:") {
+                return false;
+            }
+
+            // Check valid characters (alphanumeric, dash, underscore only)
+            for byte in did {
+                match byte {
+                    b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b':' => {},
+                    _ => return false,
+                }
+            }
+
+            // Must have at least one colon after "did:"
+            if did.iter().skip(4).filter(|&&b| b == b':').count() == 0 {
+                return false;
+            }
+
+            true
+        }
+
+        /// Validate public key is valid
+        fn validate_public_key(public_key: &H256) -> bool {
+            // Public key cannot be all zeros
+            *public_key != H256::zero()
         }
     }
 }

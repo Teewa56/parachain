@@ -27,10 +27,6 @@ ark-groth16 = { version = "0.4.0", default-features = false }
 ark-bn254 = { version = "0.4.0", default-features = false }
 ark-relations = { version = "0.4.0", default-features = false }
 ark-r1cs-std = { version = "0.4.0", default-features = false }
-ark-crypto-primitives = { version = "0.4.0", default-features = false }
-
-# SHA256 for hashing
-sha2 = { version = "0.10", default-features = false }
 
 [dev-dependencies]
 sp-io = { version = "23.0.0", git = "https://github.com/paritytech/polkadot-sdk.git", branch = "polkadot-v1.0.0" }
@@ -55,8 +51,6 @@ std = [
     "ark-bn254/std",
     "ark-relations/std",
     "ark-r1cs-std/std",
-    "ark-crypto-primitives/std",
-    "sha2/std",
 ]
 runtime-benchmarks = ["frame-benchmarking/runtime-benchmarks"]
 try-runtime = ["frame-support/try-runtime"]

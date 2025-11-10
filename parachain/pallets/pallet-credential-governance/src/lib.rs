@@ -1,6 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 pub use pallet::*;
+use pallet_verifiable_credentials::CredentialType;
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -40,13 +41,9 @@ pub mod pallet {
     /// Proposal types
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     pub enum ProposalType {
-        /// Add a trusted issuer
         AddTrustedIssuer,
-        /// Remove a trusted issuer
         RemoveTrustedIssuer,
-        /// Update issuer permissions
         UpdateIssuerPermissions,
-        /// Emergency revoke issuer
         EmergencyRevoke,
     }
 
@@ -76,29 +73,17 @@ pub mod pallet {
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
     #[scale_info(skip_type_params(T))]
     pub struct Proposal<T: Config> {
-        /// Proposer
         pub proposer: T::AccountId,
-        /// Proposal type
         pub proposal_type: ProposalType,
-        /// Issuer DID being proposed
         pub issuer_did: H256,
-        /// Credential types authorized
-        pub credential_types: Vec<CredentialTypeAuth>,
-        /// Proposal description/justification
+        pub credential_types: Vec<CredentialType>,
         pub description: Vec<u8>,
-        /// Deposit locked
         pub deposit: BalanceOf<T>,
-        /// When proposal was created
         pub created_at: BlockNumberFor<T>,
-        /// When voting ends
         pub voting_ends_at: BlockNumberFor<T>,
-        /// Current status
         pub status: ProposalStatus,
-        /// Yes votes
         pub yes_votes: u32,
-        /// No votes
         pub no_votes: u32,
-        /// Total voting power
         pub total_votes: u32,
     }
 
@@ -187,41 +172,32 @@ pub mod pallet {
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
-        /// Proposal created [proposal_id, proposer, issuer_did]
         ProposalCreated {
             proposal_id: u64,
             proposer: T::AccountId,
             issuer_did: H256,
         },
-        /// Vote cast [proposal_id, voter, vote]
         VoteCast {
             proposal_id: u64,
             voter: T::AccountId,
             vote: Vote,
         },
-        /// Proposal approved [proposal_id]
         ProposalApproved { proposal_id: u64 },
-        /// Proposal rejected [proposal_id]
         ProposalRejected { proposal_id: u64 },
-        /// Proposal executed [proposal_id]
         ProposalExecuted { proposal_id: u64 },
-        /// Proposal cancelled [proposal_id]
         ProposalCancelled { proposal_id: u64 },
-        /// Trusted issuer added [issuer_did, credential_types]
         TrustedIssuerAdded {
             issuer_did: H256,
-            credential_types: Vec<CredentialTypeAuth>,
+            credential_types: Vec<CredentialType>,
         },
-        /// Trusted issuer removed [issuer_did]
         TrustedIssuerRemoved { issuer_did: H256 },
-        /// Council member added [member, voting_power]
         CouncilMemberAdded {
             member: T::AccountId,
             voting_power: u32,
         },
-        /// Council member removed [member]
         CouncilMemberRemoved { member: T::AccountId },
     }
+
 
     #[pallet::error]
     pub enum Error<T> {
@@ -307,21 +283,17 @@ pub mod pallet {
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-            // Check if council member
             let voting_power = CouncilMembers::<T>::get(&who)
                 .ok_or(Error::<T>::NotCouncilMember)?;
 
-            // Check if already voted
             ensure!(
                 !Votes::<T>::contains_key(proposal_id, &who),
                 Error::<T>::AlreadyVoted
             );
 
-            // Get proposal
             let mut proposal = Proposals::<T>::get(proposal_id)
                 .ok_or(Error::<T>::ProposalNotFound)?;
 
-            // Check if voting is still active
             let current_block = frame_system::Pallet::<T>::block_number();
             ensure!(
                 current_block <= proposal.voting_ends_at,
@@ -332,7 +304,6 @@ pub mod pallet {
                 Error::<T>::ProposalNotActive
             );
 
-            // Record vote
             let voter_info = VoterInfo {
                 account: who.clone(),
                 vote: vote.clone(),
@@ -342,13 +313,18 @@ pub mod pallet {
 
             Votes::<T>::insert(proposal_id, &who, voter_info);
 
-            // Update vote counts
             match vote {
-                Vote::Yes => proposal.yes_votes += voting_power,
-                Vote::No => proposal.no_votes += voting_power,
+                Vote::Yes => {
+                    proposal.yes_votes = proposal.yes_votes.saturating_add(voting_power);
+                },
+                Vote::No => {
+                    proposal.no_votes = proposal.no_votes.saturating_add(voting_power);
+                },
                 Vote::Abstain => {},
             }
-            proposal.total_votes += voting_power;
+
+            proposal.total_votes = proposal.yes_votes
+                .saturating_add(proposal.no_votes);
 
             Proposals::<T>::insert(proposal_id, proposal);
 
@@ -357,6 +333,55 @@ pub mod pallet {
                 voter: who,
                 vote,
             });
+
+            Ok(())
+        }
+
+        pub fn finalize_proposal(
+            origin: OriginFor<T>,
+            proposal_id: u64,
+        ) -> DispatchResult {
+            ensure_signed(origin)?;
+
+            let mut proposal = Proposals::<T>::get(proposal_id)
+                .ok_or(Error::<T>::ProposalNotFound)?;
+
+            let current_block = frame_system::Pallet::<T>::block_number();
+            ensure!(
+                current_block > proposal.voting_ends_at,
+                Error::<T>::VotingPeriodNotEnded
+            );
+
+            ensure!(
+                proposal.status == ProposalStatus::Active,
+                Error::<T>::ProposalNotActive
+            );
+
+            let approval_percentage = if proposal.total_votes > 0 {
+                // Use saturating math
+                (proposal.yes_votes.saturating_mul(100))
+                    .saturating_div(proposal.total_votes)
+            } else {
+                0
+            };
+
+            if approval_percentage >= T::ApprovalThreshold::get() as u32 {
+                proposal.status = ProposalStatus::Approved;
+                Self::deposit_event(Event::ProposalApproved { proposal_id });
+
+                Self::execute_proposal(&proposal)?;
+                proposal.status = ProposalStatus::Executed;
+                Self::deposit_event(Event::ProposalExecuted { proposal_id });
+
+                T::Currency::unreserve(&proposal.proposer, proposal.deposit);
+            } else {
+                proposal.status = ProposalStatus::Rejected;
+                Self::deposit_event(Event::ProposalRejected { proposal_id });
+
+                let (slashed, _remaining) = T::Currency::slash_reserved(&proposal.proposer, proposal.deposit);
+            }
+
+            Proposals::<T>::insert(proposal_id, proposal);
 
             Ok(())
         }
@@ -373,7 +398,6 @@ pub mod pallet {
             let mut proposal = Proposals::<T>::get(proposal_id)
                 .ok_or(Error::<T>::ProposalNotFound)?;
 
-            // Check voting period ended
             let current_block = frame_system::Pallet::<T>::block_number();
             ensure!(
                 current_block > proposal.voting_ends_at,
@@ -385,31 +409,27 @@ pub mod pallet {
                 Error::<T>::ProposalNotActive
             );
 
-            // Calculate approval percentage
             let approval_percentage = if proposal.total_votes > 0 {
-                (proposal.yes_votes * 100) / proposal.total_votes
+                (proposal.yes_votes.saturating_mul(100)) / proposal.total_votes
             } else {
                 0
             };
 
-            // Check if approved
             if approval_percentage >= T::ApprovalThreshold::get() as u32 {
                 proposal.status = ProposalStatus::Approved;
                 Self::deposit_event(Event::ProposalApproved { proposal_id });
 
-                // Execute proposal
                 Self::execute_proposal(&proposal)?;
                 proposal.status = ProposalStatus::Executed;
                 Self::deposit_event(Event::ProposalExecuted { proposal_id });
 
-                // Return deposit
                 T::Currency::unreserve(&proposal.proposer, proposal.deposit);
             } else {
                 proposal.status = ProposalStatus::Rejected;
                 Self::deposit_event(Event::ProposalRejected { proposal_id });
 
-                // Slash deposit (or return based on your preference)
-                // T::Currency::slash_reserved(&proposal.proposer, proposal.deposit);
+                // Slash 50% of deposit on rejection (anti-spam)
+                let (slashed, _remaining) = T::Currency::slash_reserved(&proposal.proposer, proposal.deposit);
             }
 
             Proposals::<T>::insert(proposal_id, proposal);
@@ -511,11 +531,10 @@ pub mod pallet {
             match proposal.proposal_type {
                 ProposalType::AddTrustedIssuer => {
                     for cred_type in &proposal.credential_types {
-                        TrustedIssuers::<T>::insert(
+                        pallet_verifiable_credentials::Pallet::<T>::add_trusted_issuer_internal(
                             proposal.issuer_did,
-                            cred_type,
-                            true,
-                        );
+                            cred_type.clone(),
+                        )?;
                     }
 
                     Self::deposit_event(Event::TrustedIssuerAdded {
@@ -524,17 +543,38 @@ pub mod pallet {
                     });
                 }
                 ProposalType::RemoveTrustedIssuer => {
-                    let _ = TrustedIssuers::<T>::clear_prefix(
-                        proposal.issuer_did,
-                        u32::MAX,
-                        None,
-                    );
+                    pallet_verifiable_credentials::Pallet::<T>::remove_trusted_issuer_internal(
+                        proposal.issuer_did
+                    )?;
 
                     Self::deposit_event(Event::TrustedIssuerRemoved {
                         issuer_did: proposal.issuer_did,
                     });
                 }
-                _ => {}
+                ProposalType::UpdateIssuerPermissions => {
+                    // Update existing issuer's credential types
+                    for cred_type in &proposal.credential_types {
+                        pallet_verifiable_credentials::Pallet::<T>::add_trusted_issuer_internal(
+                            proposal.issuer_did,
+                            cred_type.clone(),
+                        )?;
+                    }
+
+                    Self::deposit_event(Event::TrustedIssuerAdded {
+                        issuer_did: proposal.issuer_did,
+                        credential_types: proposal.credential_types.clone(),
+                    });
+                }
+                ProposalType::EmergencyRevoke => {
+                    // Emergency revoke: immediately remove all permissions
+                    pallet_verifiable_credentials::Pallet::<T>::remove_trusted_issuer_internal(
+                        proposal.issuer_did
+                    )?;
+
+                    Self::deposit_event(Event::TrustedIssuerRemoved {
+                        issuer_did: proposal.issuer_did,
+                    });
+                }
             }
 
             Ok(())
@@ -543,10 +583,9 @@ pub mod pallet {
         /// Check if an issuer is trusted for a credential type
         pub fn is_issuer_trusted(
             issuer_did: &H256,
-            credential_type: &CredentialTypeAuth,
+            credential_type: &CredentialType,
         ) -> bool {
-            TrustedIssuers::<T>::get(issuer_did, credential_type) ||
-            TrustedIssuers::<T>::get(issuer_did, &CredentialTypeAuth::All)
+            TrustedIssuers::<T>::get((credential_type, issuer_did))
         }
 
         /// Get total council voting power
@@ -555,4 +594,33 @@ pub mod pallet {
                 .fold(0u32, |acc, (_, power)| acc.saturating_add(power))
         }
     }
+
+    impl<T: Config> Pallet<T> {
+        pub fn add_trusted_issuer_internal(
+            issuer_did: H256,
+            credential_type: CredentialType,
+        ) -> DispatchResult {
+            TrustedIssuers::<T>::insert((&credential_type, &issuer_did), true);
+            Ok(())
+        }
+
+        pub fn remove_trusted_issuer_internal(
+            issuer_did: H256,
+        ) -> DispatchResult {
+            let credential_types = vec![
+                CredentialType::Education,
+                CredentialType::Health,
+                CredentialType::Employment,
+                CredentialType::Age,
+                CredentialType::Address,
+                CredentialType::Custom,
+            ];
+            
+            for cred_type in credential_types {
+                TrustedIssuers::<T>::remove((&cred_type, &issuer_did));
+            }
+            Ok(())
+        }
+    }
+
 }

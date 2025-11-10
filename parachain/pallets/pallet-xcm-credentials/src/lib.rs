@@ -9,12 +9,15 @@ pub mod pallet {
         traits::Time,
     };
     use frame_system::pallet_prelude::*;
+    use frame_support::pallet_prelude::*;
+    use codec::Encode;
     use sp_std::vec::Vec;
     use sp_core::H256;
     use xcm::latest::{
         Junction, Junctions, MultiLocation, OriginKind, SendXcm, Xcm,
         WeightLimit, AssetId, Fungibility, MultiAsset, MultiAssets,
     };
+    use cumulus_primitives_core::relay_chain::BlockNumber as RelayBlockNumber;
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
@@ -23,12 +26,9 @@ pub mod pallet {
     pub trait Config: frame_system::Config {
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         type TimeProvider: Time;
-        
-        /// XCM sender
         type XcmSender: SendXcm;
-        
-        /// Origin for XCM
         type XcmOrigin: From<<Self as frame_system::Config>::RuntimeOrigin>;
+        type ParachainId: Get<u32>;
     }
 
     /// Cross-chain credential verification request
@@ -47,14 +47,11 @@ pub mod pallet {
     /// Cross-chain credential verification response
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
     pub struct XcmCredentialResponse {
-        /// Target parachain ID
         pub target_para_id: u32,
-        /// Credential hash verified
         pub credential_hash: H256,
-        /// Verification result
         pub is_valid: bool,
-        /// Additional info (optional)
         pub metadata: Vec<u8>,
+        pub created_at: u64,
     }
 
     /// Registered parachains for cross-chain credentials
@@ -442,10 +439,9 @@ pub mod pallet {
             Ok(())
         }
 
-        /// Get current parachain ID (placeholder - should be from ParachainInfo)
+        /// Get current parachain ID 
         fn get_current_para_id() -> u32 {
-            // In production, get from cumulus_primitives_core::ParaId
-            2000 // Placeholder
+            T::ParachainId::get()
         }
 
         /// Encode verification request call
@@ -453,12 +449,13 @@ pub mod pallet {
             credential_hash: H256,
             request_hash: H256,
         ) -> sp_std::vec::Vec<u8> {
-            // Encode the call to the target parachain's handle_verification_request
-            let mut encoded = Vec::new();
-            encoded.extend_from_slice(&[0u8; 2]); // Pallet index + call index
-            encoded.extend_from_slice(credential_hash.as_bytes());
-            encoded.extend_from_slice(request_hash.as_bytes());
-            encoded
+            (
+                1u8,  // Pallet index 
+                2u8, // Call index for handle_verification_request
+                credential_hash,
+                request_hash,
+            )
+            .encode()
         }
 
         /// Encode import credential call
@@ -467,27 +464,45 @@ pub mod pallet {
             credential_hash: H256,
             credential_data: Vec<u8>,
         ) -> sp_std::vec::Vec<u8> {
-            let mut encoded = Vec::new();
-            encoded.extend_from_slice(&[0u8; 2]); // Pallet index + call index
-            encoded.extend_from_slice(&source_para_id.to_le_bytes());
-            encoded.extend_from_slice(credential_hash.as_bytes());
-            encoded.extend_from_slice(&credential_data);
-            encoded
+            // Use SCALE encoding
+            (
+                1u8,  // Pallet index
+                3u8,  // Call index for import_credential
+                source_para_id,
+                credential_hash,
+                credential_data,
+            )
+            .encode()
         }
 
         /// Check if credential is valid across chains
         pub fn is_credential_valid_cross_chain(credential_hash: &H256) -> bool {
             let responses = VerificationResults::<T>::get(credential_hash);
             
-            // Credential is valid if majority of responses say it's valid
-            let valid_count = responses.iter().filter(|r| r.is_valid).count();
-            let total_count = responses.len();
-
-            if total_count == 0 {
+            if responses.len() == 0 {
                 return false;
             }
 
-            valid_count > total_count / 2
+            // FIX: Add timestamp validation (responses not older than 1 hour)
+            let current_time = T::TimeProvider::now().as_secs();
+            let one_hour_secs = 3600u64;
+
+            let valid_responses: Vec<_> = responses
+                .iter()
+                .filter(|r| {
+                    // Check response is fresh (within 1 hour)
+                    let response_age = current_time.saturating_sub(r.created_at);
+                    response_age < one_hour_secs && r.is_valid
+                })
+                .collect();
+
+            // Require at least 2/3 valid responses
+            let required_consensus = (responses.len() as u32)
+                .saturating_mul(2)
+                .saturating_div(3)
+                .saturating_add(1);
+
+            valid_responses.len() >= required_consensus as usize
         }
 
         /// Get all verification responses for a credential

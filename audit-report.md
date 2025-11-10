@@ -684,7 +684,7 @@ pub fn issue_credential(...) -> DispatchResult {
         creds.try_push(credential_id)  // ❌ O(1) push, but BoundedVec max 100
         // If limit reached, new credentials can't be issued!
     })?;
-
+    
     IssuedBy::<T>::try_mutate(&issuer_did, |creds| -> DispatchResult {
         creds.try_push(credential_id)  // ❌ Same limit
     })?;
