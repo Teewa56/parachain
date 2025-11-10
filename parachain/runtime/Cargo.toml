@@ -22,7 +22,11 @@ cumulus-pallet-parachain-system.workspace = true
 docify = { workspace = true }
 hex-literal = { optional = true, workspace = true, default-features = true }
 log = { workspace = true }
-pallet-parachain-template.workspace = true
+pallet-credential-governance.workspace = true
+pallet-identity-registry.workspace = true
+pallet-verifiable-credentials.workspace = true
+pallet-xcm-credentials.workspace = true
+pallet-zk-credentials.workspace = true
 polkadot-sdk = { workspace = true, features = ["cumulus-pallet-aura-ext", "cumulus-pallet-session-benchmarking", "cumulus-pallet-weight-reclaim", "cumulus-pallet-xcm", "cumulus-pallet-xcmp-queue", "cumulus-primitives-aura", "cumulus-primitives-core", "cumulus-primitives-utility", "pallet-aura", "pallet-authorship", "pallet-balances", "pallet-collator-selection", "pallet-message-queue", "pallet-session", "pallet-sudo", "pallet-timestamp", "pallet-transaction-payment", "pallet-transaction-payment-rpc-runtime-api", "pallet-xcm", "parachains-common", "polkadot-parachain-primitives", "polkadot-runtime-common", "runtime", "staging-parachain-info", "staging-xcm", "staging-xcm-builder", "staging-xcm-executor"], default-features = false }
 scale-info = { features = ["derive"], workspace = true }
 serde_json = { workspace = true, default-features = false, features = ["alloc"] }
@@ -50,12 +54,6 @@ sp-session = { git = "https://github.com/paritytech/substrate.git", default-feat
 sp-std = { git = "https://github.com/paritytech/substrate.git", default-features = false, branch = "polkadot-v1.0.0" }
 sp-transaction-pool = { git = "https://github.com/paritytech/substrate.git", default-features = false, branch = "polkadot-v1.0.0" }
 sp-version = { git = "https://github.com/paritytech/substrate.git", default-features = false, branch = "polkadot-v1.0.0" }
-# Custom Pallets
-pallet-identity-registry = { path = "../pallets/pallet-identity-registry", default-features = false }
-pallet-verifiable-credentials = { path = "../pallets/pallet-verifiable-credentials", default-features = false }
-pallet-zk-credentials = { path = "../pallets/pallet-zk-credentials", default-features = false }
-pallet-credential-governance = { path = "../pallets/pallet-credential-governance", default-features = false }
-pallet-xcm-credentials = { path = "../pallets/pallet-xcm-credentials", default-features = false }
 
 [features]
 default = ["std"]
@@ -98,7 +96,11 @@ std = [
 runtime-benchmarks = [
 	"cumulus-pallet-parachain-system/runtime-benchmarks",
 	"hex-literal",
-	"pallet-parachain-template/runtime-benchmarks",
+	"pallet-credential-governance/runtime-benchmarks",
+    "pallet-identity-registry/runtime-benchmarks",
+    "pallet-verifiable-credentials/runtime-benchmarks",
+    "pallet-xcm-credentials/runtime-benchmarks",
+    "pallet-zk-credentials/runtime-benchmarks",
 	"polkadot-sdk/runtime-benchmarks",
 	"frame-benchmarking/runtime-benchmarks",
     "frame-support/runtime-benchmarks",
@@ -113,7 +115,11 @@ runtime-benchmarks = [
 
 try-runtime = [
 	"cumulus-pallet-parachain-system/try-runtime",
-	"pallet-parachain-template/try-runtime",
+	"pallet-credential-governance/try-runtime",
+    "pallet-identity-registry/try-runtime",
+    "pallet-verifiable-credentials/try-runtime",
+    "pallet-xcm-credentials/try-runtime",
+    "pallet-zk-credentials/try-runtime",
 	"polkadot-sdk/try-runtime",
 	"frame-executive/try-runtime",
     "frame-try-runtime/try-runtime",

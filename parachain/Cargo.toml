@@ -6,17 +6,35 @@ repository = "https://github.com/paritytech/polkadot-sdk-parachain-template.git"
 edition = "2021"
 
 [workspace]
-default-members = ["pallets/template", "runtime"]
+default-members = [
+    "pallets/pallet-credential-governance",
+    "pallets/pallet-identity-registry",
+    "pallets/pallet-verifiable-credentials",
+    "pallets/pallet-xcm-credentials",
+    "pallets/pallet-zk-credentials",
+    "runtime"
+]
 members = [
     "node",
-    "pallets/template",
+    "pallets/pallet-credential-governance",
+    "pallets/pallet-identity-registry",
+    "pallets/pallet-verifiable-credentials",
+    "pallets/pallet-xcm-credentials",
+    "pallets/pallet-zk-credentials",
     "runtime",
 ]
 resolver = "2"
 
 [workspace.dependencies]
 parachain-template-runtime = { path = "./runtime", default-features = false }
-pallet-parachain-template = { path = "./pallets/template", default-features = false }
+pallet-credential-governance = { path = "./pallets/template", default-features = false }
+pallet-identity-registry = { path = "./pallets/pallet-identity-registry", default-features = false }
+pallet-verifiable-credentials = { path = "./pallets/pallet-verifiable-credentials", default-features = false }
+pallet-xcm-credentials = { path = "./pallets/pallet-xcm-credentials", default-features = false }
+pallet-zk-credentials = { path = "./pallets/pallet-zk-credentials", default-features = false }
+sp-core = { version = "0.9.51", default-features = false, package = "sp-core" }
+sp-runtime = { version = "0.9.51", default-features = false, package = "sp-runtime" }
+sp-std = { version = "0.9.51", default-features = false, package = "sp-std" }
 clap = { version = "4.5.13" }
 color-print = { version = "0.3.4" }
 docify = { version = "0.2.9" }
