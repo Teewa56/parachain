@@ -17,7 +17,11 @@ docify = { workspace = true }
 futures = { workspace = true }
 jsonrpsee = { features = ["server"], workspace = true }
 log = { workspace = true, default-features = true }
-parachain-template-runtime.workspace = true
+pallet-credential-governance.workspace = true
+pallet-identity-registry.workspace = true
+pallet-verifiable-credentials.workspace = true
+pallet-xcm-credentials.workspace = true
+pallet-zk-credentials.workspace = true
 polkadot-sdk = { workspace = true, features = ["node"] }
 prometheus-endpoint.default-features = true
 prometheus-endpoint.workspace = true
@@ -30,14 +34,26 @@ polkadot-sdk = { workspace = true, features = ["substrate-build-script-utils"] }
 default = ["std"]
 std = [
 	"log/std",
-	"parachain-template-runtime/std",
+	"pallet-identity-registry/std",
+    "pallet-verifiable-credentials/std",
+    "pallet-zk-credentials/std",
+    "pallet-credential-governance/std",
+    "pallet-xcm-credentials/std",
 	"polkadot-sdk/std",
 ]
 runtime-benchmarks = [
-	"parachain-template-runtime/runtime-benchmarks",
+	"pallet-credential-governance/runtime-benchmarks",
+    "pallet-identity-registry/runtime-benchmarks",
+    "pallet-verifiable-credentials/runtime-benchmarks",
+    "pallet-xcm-credentials/runtime-benchmarks",
+    "pallet-zk-credentials/runtime-benchmarks",
 	"polkadot-sdk/runtime-benchmarks",
 ]
 try-runtime = [
-	"parachain-template-runtime/try-runtime",
+	"pallet-credential-governance/try-runtime",
+    "pallet-identity-registry/try-runtime",
+    "pallet-verifiable-credentials/try-runtime",
+    "pallet-xcm-credentials/try-runtime",
+    "pallet-zk-credentials/try-runtime",
 	"polkadot-sdk/try-runtime",
 ]
