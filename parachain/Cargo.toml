@@ -35,25 +35,25 @@ pallet-zk-credentials = { path = "./pallets/pallet-zk-credentials", default-feat
 sp-core = { version = "38.1.0", default-features = false, package = "sp-core" }
 sp-runtime = { version = "44.0.0", default-features = false, package = "sp-runtime" }
 sp-std = { version = "14.0.0", default-features = false, package = "sp-std" }
-frame-benchmarking = { version = "4.0.0-dev", default-features = false, optional = false }
-frame-executive = { version = "4.0.0-dev", default-features = false }
-frame-support = { version = "4.0.0-dev", default-features = false }
-frame-system = { version = "4.0.0-dev", default-features = false }
-frame-system-benchmarking = { version = "4.0.0-dev", default-features = false, optional = false }
-frame-system-rpc-runtime-api = { version = "4.0.0-dev", default-features = false }
+frame-benchmarking = { workspace = true, default-features = false, optional = false }
+frame-executive = { workspace = true, default-features = false }
+frame-support = { workspace = true, default-features = false }
+frame-system = { workspace = true, default-features = false }
+frame-system-benchmarking = { workspace = true, default-features = false, optional = false }
+frame-system-rpc-runtime-api = { workspace = true, default-features = false }
 frame-try-runtime = { version = "0.49.0", default-features = false, optional = false }
-pallet-balances = { version = "4.0.0-dev", default-features = false }
-pallet-sudo = { version = "4.0.0-dev", default-features = false }
-pallet-timestamp = { version = "4.0.0-dev", default-features = false }
-pallet-transaction-payment = { version = "4.0.0-dev", default-features = false }
-pallet-transaction-payment-rpc-runtime-api = { version = "4.0.0-dev", default-features = false }
-sp-api = { version = "4.0.0-dev", default-features = false }
-sp-block-builder = { version = "4.0.0-dev", default-features = false }
-sp-inherents = { version = "4.0.0-dev", default-features = false }
-sp-offchain = { version = "4.0.0-dev", default-features = false }
-sp-session = { version = "4.0.0-dev", default-features = false }
-sp-transaction-pool = { version = "4.0.0-dev", default-features = false }
-sp-version = { version = "4.0.0-dev", default-features = false }
+pallet-balances = { workspace = true, default-features = false }
+pallet-sudo = { version = "43.0.0.", default-features = false }
+pallet-timestamp = { workspace = true, default-features = false }
+pallet-transaction-payment = { workspace = true, default-features = false }
+pallet-transaction-payment-rpc-runtime-api = { workspace = true, default-features = false }
+sp-api = { workspace = true, default-features = false }
+sp-block-builder = { workspace = true, default-features = false }
+sp-inherents = { workspace = true, default-features = false }
+sp-offchain = { workspace = true, default-features = false }
+sp-session = { workspace = true, default-features = false }
+sp-transaction-pool = { workspace = true, default-features = false }
+sp-version = { workspace = true, default-features = false }
 sp-io = { version = "23.0.0", default-features = false }
 xcm = { version = "0.0.1", default-features = false }
 cumulus-primitives-core = { version = "0.20.0", default-features = false }
@@ -87,6 +87,5 @@ lto = true
 [patch.crates-io]
 xcm = { git = "https://github.com/paritytech/polkadot.git", tag = "v1.0.0-rc5" }
 pallet-xcm = { git = "https://github.com/paritytech/polkadot.git", tag = "v1.0.0-rc5" }
-pallet-xcm-credits = { git = "https://github.com/paritytech/polkadot.git", tag = "v1.0.0-rc5" }
 cumulus-pallet-xcm = { git = "https://github.com/paritytech/cumulus.git", tag = "v1.0.0-rc5" }
 polkadot-primitives = { git = "https://github.com/paritytech/polkadot.git", tag = "v1.0.0-rc5" }
