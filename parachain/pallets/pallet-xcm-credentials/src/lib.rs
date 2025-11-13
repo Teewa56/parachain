@@ -186,7 +186,7 @@ pub mod pallet {
     impl<T: Config> Pallet<T> {
         /// Register a parachain for cross-chain credentials
         #[pallet::call_index(0)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::register_parachain())]
         pub fn register_parachain(
             origin: OriginFor<T>,
             para_id: u32,
@@ -214,7 +214,7 @@ pub mod pallet {
 
         /// Request credential verification from another parachain
         #[pallet::call_index(1)]
-        #[pallet::weight(20_000)]
+        #[pallet::weight(T::WeightInfo::request_cross_chain_verification())]
         pub fn request_cross_chain_verification(
             origin: OriginFor<T>,
             credential_hash: H256,
@@ -255,7 +255,7 @@ pub mod pallet {
 
         /// Export a credential to another parachain
         #[pallet::call_index(2)]
-        #[pallet::weight(20_000)]
+        #[pallet::weight(T::WeightInfo::export_credential())]
         pub fn export_credential(
             origin: OriginFor<T>,
             credential_hash: H256,
@@ -296,14 +296,13 @@ pub mod pallet {
 
         /// Handle incoming credential import (called by XCM)
         #[pallet::call_index(3)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::import_credential())]
         pub fn import_credential(
             origin: OriginFor<T>,
             source_para_id: u32,
             credential_hash: H256,
             credential_data: Vec<u8>,
         ) -> DispatchResult {
-            // Ensure this is from XCM
             let _origin = ensure_root(origin)?;
 
             // Verify source parachain is trusted
@@ -325,7 +324,7 @@ pub mod pallet {
 
         /// Handle verification response (called by XCM)
         #[pallet::call_index(4)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::handle_verification_response())]
         pub fn handle_verification_response(
             origin: OriginFor<T>,
             credential_hash: H256,
@@ -359,7 +358,7 @@ pub mod pallet {
 
         /// Deregister a parachain
         #[pallet::call_index(5)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::deregister_parachain())]
         pub fn deregister_parachain(
             origin: OriginFor<T>,
             para_id: u32,

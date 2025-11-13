@@ -331,27 +331,39 @@ impl pallet_utility::Config for Runtime {
 }
 
 // custom pallets.
-impl pallet_zk_credentials::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type CounterMaxValue = CounterMaxValue;
-}
-
 impl pallet_identity_registry::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type CounterMaxValue = CounterMaxValue;
+    type TimeProvider = Timestamp;
+    type WeightInfo = pallet_identity_registry::weights::SubstrateWeight<Runtime>;
 }
 
 impl pallet_verifiable_credentials::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type CounterMaxValue = CounterMaxValue;
+    type TimeProvider = Timestamp;
+    type ZkCredentials = Runtime;
+    type WeightInfo = pallet_verifiable_credentials::weights::SubstrateWeight<Runtime>;
+}
+
+impl pallet_zk_credentials::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type WeightInfo = pallet_zk_credentials::weights::SubstrateWeight<Runtime>;
 }
 
 impl pallet_credential_governance::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type CounterMaxValue = CounterMaxValue;
+    type Currency = Balances;
+    type TimeProvider = Timestamp;
+    type ProposalDeposit = ProposalDeposit;
+    type VotingPeriod = VotingPeriod;
+    type ApprovalThreshold = ApprovalThreshold;
+    type WeightInfo = pallet_credential_governance::weights::SubstrateWeight<Runtime>;
 }
 
 impl pallet_xcm_credentials::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type CounterMaxValue = CounterMaxValue;
+    type TimeProvider = Timestamp;
+    type XcmSender = XcmRouter;
+    type XcmOrigin = EnsureRoot<AccountId>;
+    type ParachainId = parachain_info::Pallet<Runtime>;
+    type WeightInfo = pallet_xcm_credentials::weights::SubstrateWeight<Runtime>;
 }

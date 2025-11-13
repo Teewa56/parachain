@@ -262,7 +262,7 @@ pub mod pallet {
     impl<T: Config> Pallet<T> {
         /// Issue a new credential
         #[pallet::call_index(0)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::issue_credential())]
         pub fn issue_credential(
             origin: OriginFor<T>,
             subject_did: H256,
@@ -334,7 +334,7 @@ pub mod pallet {
 
         /// Revoke a credential (only issuer can revoke)
         #[pallet::call_index(1)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::revoke_credential())]
         pub fn revoke_credential(
             origin: OriginFor<T>,
             credential_id: H256,
@@ -360,7 +360,7 @@ pub mod pallet {
 
         /// Verify a credential
         #[pallet::call_index(2)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::verify_credential())]
         pub fn verify_credential(
             origin: OriginFor<T>,
             credential_id: H256,
@@ -400,7 +400,7 @@ pub mod pallet {
 
         /// Create a credential schema
         #[pallet::call_index(3)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::create_schema())]
         pub fn create_schema(
             origin: OriginFor<T>,
             credential_type: CredentialType,
@@ -443,7 +443,7 @@ pub mod pallet {
 
         /// Add a trusted issuer for a credential type (requires root/governance)
         #[pallet::call_index(4)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::add_trusted_issuer())]
         pub fn add_trusted_issuer(
             origin: OriginFor<T>,
             credential_type: CredentialType,
@@ -463,9 +463,9 @@ pub mod pallet {
             Ok(())
         }
 
-        /// Remove a trusted issuer (requires root/governance)
+        /// Remove a trusted issuer
         #[pallet::call_index(5)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::remove_trusted_issuer())]
         pub fn remove_trusted_issuer(
             origin: OriginFor<T>,
             credential_type: CredentialType,
@@ -482,7 +482,7 @@ pub mod pallet {
 
         /// Selective disclosure with production-ready ZK proof verification
         #[pallet::call_index(6)]
-        #[pallet::weight(100_000)]
+        #[pallet::weight(T::WeightInfo::selective_disclosure())]
         pub fn selective_disclosure(
             origin: OriginFor<T>,
             credential_id: H256,
@@ -580,7 +580,7 @@ pub mod pallet {
         }
 
         #[pallet::call_index(7)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::get_credentials_paginated())]
         pub fn get_credentials_paginated(
             subject_did: H256,
             page: u32,

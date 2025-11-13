@@ -237,7 +237,7 @@ pub mod pallet {
     impl<T: Config> Pallet<T> {
         /// Create a proposal to add a trusted issuer
         #[pallet::call_index(0)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::propose_add_issuer())]
         pub fn propose_add_issuer(
             origin: OriginFor<T>,
             issuer_did: H256,
@@ -283,7 +283,7 @@ pub mod pallet {
 
         /// Vote on a proposal
         #[pallet::call_index(1)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::vote())]
         pub fn vote(
             origin: OriginFor<T>,
             proposal_id: u64,
@@ -396,7 +396,7 @@ pub mod pallet {
 
         /// Finalize a proposal after voting period
         #[pallet::call_index(2)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::finalize_proposal())]
         pub fn finalize_proposal(
             origin: OriginFor<T>,
             proposal_id: u64,
@@ -447,7 +447,7 @@ pub mod pallet {
 
         /// Add council member (requires root)
         #[pallet::call_index(3)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::add_council_member())]
         pub fn add_council_member(
             origin: OriginFor<T>,
             member: <T::Lookup as StaticLookup>::Source,
@@ -468,7 +468,7 @@ pub mod pallet {
 
         /// Remove council member (requires root)
         #[pallet::call_index(4)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::remove_council_member())]
         pub fn remove_council_member(
             origin: OriginFor<T>,
             member: <T::Lookup as StaticLookup>::Source,
@@ -485,9 +485,9 @@ pub mod pallet {
             Ok(())
         }
 
-        /// Emergency remove trusted issuer (requires root)
+        /// Emergency remove trusted issuer
         #[pallet::call_index(5)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::emergency_remove_issuer())]
         pub fn emergency_remove_issuer(
             origin: OriginFor<T>,
             issuer_did: H256,
@@ -505,7 +505,7 @@ pub mod pallet {
 
         /// Cancel own proposal (before voting ends)
         #[pallet::call_index(6)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::cancel_proposal())]
         pub fn cancel_proposal(
             origin: OriginFor<T>,
             proposal_id: u64,

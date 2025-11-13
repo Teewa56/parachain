@@ -117,7 +117,7 @@ pub mod pallet {
     impl<T: Config> Pallet<T> {
         /// Create a new identity
         #[pallet::call_index(0)]
-        #[pallet::weight(10_000)]
+       #[pallet::weight(T::WeightInfo::create_identity())]
         pub fn create_identity(
             origin: OriginFor<T>,
             did: Vec<u8>,
@@ -175,7 +175,7 @@ pub mod pallet {
 
         /// Update identity public key
         #[pallet::call_index(1)]
-        #[pallet::weight(10_000)]
+       #[pallet::weight(T::WeightInfo::update_identity())]
         pub fn update_identity(
             origin: OriginFor<T>,
             new_public_key: H256,
@@ -202,7 +202,7 @@ pub mod pallet {
 
         /// Deactivate identity
         #[pallet::call_index(2)]
-        #[pallet::weight(10_000)]
+       #[pallet::weight(T::WeightInfo::deactivate_identity())]
         pub fn deactivate_identity(origin: OriginFor<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
@@ -225,7 +225,7 @@ pub mod pallet {
 
         /// Reactivate identity
         #[pallet::call_index(3)]
-        #[pallet::weight(10_000)]
+       #[pallet::weight(T::WeightInfo::reactivate_identity())]
         pub fn reactivate_identity(origin: OriginFor<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
@@ -248,7 +248,7 @@ pub mod pallet {
 
         /// Update DID document
         #[pallet::call_index(4)]
-        #[pallet::weight(10_000)]
+       #[pallet::weight(T::WeightInfo::update_did_document())]
         pub fn update_did_document(
             origin: OriginFor<T>,
             public_keys: Vec<H256>,
