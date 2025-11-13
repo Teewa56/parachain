@@ -24,6 +24,7 @@
 // For more information, please refer to <http://unlicense.org>
 
 mod xcm_config;
+use super::OriginCaller;
 
 use polkadot_sdk::{staging_parachain_info as parachain_info, staging_xcm as xcm, *};
 #[cfg(not(feature = "runtime-benchmarks"))]
@@ -320,4 +321,37 @@ impl pallet_collator_selection::Config for Runtime {
 impl pallet_parachain_template::Config for Runtime {
 	type RuntimeEvent = RuntimeEvent;
 	type WeightInfo = pallet_parachain_template::weights::SubstrateWeight<Runtime>;
+}
+// utility pallet.
+impl pallet_utility::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type RuntimeCall = RuntimeCall;
+    type PalletsOrigin = OriginCaller;
+    type WeightInfo = pallet_utility::weights::SubstrateWeight<Runtime>;
+}
+
+// custom pallets.
+impl pallet_zk_credentials::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type CounterMaxValue = CounterMaxValue;
+}
+
+impl pallet_identity_registry::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type CounterMaxValue = CounterMaxValue;
+}
+
+impl pallet_verifiable_credentials::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type CounterMaxValue = CounterMaxValue;
+}
+
+impl pallet_credential_governance::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type CounterMaxValue = CounterMaxValue;
+}
+
+impl pallet_xcm_credentials::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type CounterMaxValue = CounterMaxValue;
 }

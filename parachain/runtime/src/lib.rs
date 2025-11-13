@@ -319,6 +319,8 @@ mod runtime {
 	#[runtime::pallet_index(33)]
 	pub type MessageQueue = pallet_message_queue;
 
+    #[runtime::pallet_index(51)]
+    pub type Utility = pallet_utility;
 	#[runtime::pallet_index(52)]
     pub type ZkCredentials = pallet_zk_credentials;
     #[runtime::pallet_index(53)]

@@ -39,7 +39,7 @@ std = [
     "pallet-zk-credentials/std",
     "pallet-credential-governance/std",
     "pallet-xcm-credentials/std",
-	"polkadot-sdk/std",
+    "polkadot-sdk/std",
 ]
 runtime-benchmarks = [
 	"pallet-credential-governance/runtime-benchmarks",
@@ -47,7 +47,7 @@ runtime-benchmarks = [
     "pallet-verifiable-credentials/runtime-benchmarks",
     "pallet-xcm-credentials/runtime-benchmarks",
     "pallet-zk-credentials/runtime-benchmarks",
-	"polkadot-sdk/runtime-benchmarks",
+    "polkadot-sdk/runtime-benchmarks",
 ]
 try-runtime = [
 	"pallet-credential-governance/try-runtime",
@@ -55,5 +55,5 @@ try-runtime = [
     "pallet-verifiable-credentials/try-runtime",
     "pallet-xcm-credentials/try-runtime",
     "pallet-zk-credentials/try-runtime",
-	"polkadot-sdk/try-runtime",
+    "polkadot-sdk/try-runtime",
 ]

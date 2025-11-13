@@ -3,6 +3,12 @@
 pub use pallet::*;
 use pallet_verifiable_credentials::CredentialType;
 
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+
+pub mod weights;
+use crate::weights::WeightInfo;
+
 #[frame_support::pallet]
 pub mod pallet {
     use frame_support::{
@@ -36,6 +42,8 @@ pub mod pallet {
         /// Minimum percentage of yes votes to pass (0-100)
         #[pallet::constant]
         type ApprovalThreshold: Get<u8>;
+
+        type WeightInfo: WeightInfo;
     }
 
     /// Proposal types

@@ -25,11 +25,12 @@ log = { workspace = true }
 pallet-credential-governance = { workspace = true }
 pallet-identity-registry = { workspace = true }
 pallet-verifiable-credentials = { workspace = true }
-pallet-xcm-credentials = { path = "../pallets/pallet-xcm-credentials", default-features = false }
-xcm = { git = "https://github.com/paritytech/polkadot.git", tag = "v1.0.0-rc5", default-features = false }
+pallet-xcm-credentials = { workspace = true, default-features = false }
+xcm-builder = { workspace = true, default-features = false }
+xcm-executor = { workspace = true, default-features = false }
 pallet-xcm = { version = "23.0.0", default-features = false }
 pallet-zk-credentials = { workspace = true }
-polkadot-sdk = { workspace = true, features = ["cumulus-pallet-aura-ext", "cumulus-pallet-session-benchmarking", "cumulus-pallet-weight-reclaim", "cumulus-pallet-xcm", "cumulus-pallet-xcmp-queue", "cumulus-primitives-aura", "cumulus-primitives-core", "cumulus-primitives-utility", "pallet-aura", "pallet-authorship", "pallet-balances", "pallet-collator-selection", "pallet-message-queue", "pallet-session", "pallet-sudo", "pallet-timestamp", "pallet-transaction-payment", "pallet-transaction-payment-rpc-runtime-api", "pallet-xcm", "parachains-common", "polkadot-parachain-primitives", "polkadot-runtime-common", "runtime", "staging-parachain-info", "staging-xcm", "staging-xcm-builder", "staging-xcm-executor"], default-features = false }
+polkadot-sdk = { workspace = true, features = ["pallet-utility", "cumulus-pallet-aura-ext", "cumulus-pallet-session-benchmarking", "cumulus-pallet-weight-reclaim", "cumulus-pallet-xcm", "cumulus-pallet-xcmp-queue", "cumulus-primitives-aura", "cumulus-primitives-core", "cumulus-primitives-utility", "pallet-aura", "pallet-authorship", "pallet-balances", "pallet-collator-selection", "pallet-message-queue", "pallet-session", "pallet-sudo", "pallet-timestamp", "pallet-transaction-payment", "pallet-transaction-payment-rpc-runtime-api", "pallet-xcm", "parachains-common", "polkadot-parachain-primitives", "polkadot-runtime-common", "runtime", "staging-parachain-info", "staging-xcm", "staging-xcm-builder", "staging-xcm-executor"], default-features = false }
 scale-info = { features = ["derive"], workspace = true }
 serde_json = { workspace = true, default-features = false, features = ["alloc"] }
 smallvec = { workspace = true, default-features = true }
@@ -62,7 +63,7 @@ std = [
 	"codec/std",
 	"cumulus-pallet-parachain-system/std",
 	"log/std",
-	"polkadot-sdk/std",
+    "polkadot-sdk/std",
 	"scale-info/std",
 	"serde_json/std",
 	"substrate-wasm-builder",
@@ -91,7 +92,8 @@ std = [
     "pallet-zk-credentials/std",
     "pallet-credential-governance/std",
     "pallet-xcm-credentials/std",
-    "xcm/std",
+    "xcm-builder/std",
+    "xcm-executor/std",
     "pallet-xcm/std"
 ]
 
@@ -103,7 +105,7 @@ runtime-benchmarks = [
     "pallet-verifiable-credentials/runtime-benchmarks",
     "pallet-xcm-credentials/runtime-benchmarks",
     "pallet-zk-credentials/runtime-benchmarks",
-	"polkadot-sdk/runtime-benchmarks",
+    "polkadot-sdk/runtime-benchmarks",
 	"frame-benchmarking/runtime-benchmarks",
     "frame-support/runtime-benchmarks",
     "frame-system-benchmarking/runtime-benchmarks",
@@ -121,7 +123,7 @@ try-runtime = [
     "pallet-verifiable-credentials/try-runtime",
     "pallet-xcm-credentials/try-runtime",
     "pallet-zk-credentials/try-runtime",
-	"polkadot-sdk/try-runtime",
+    "polkadot-sdk/try-runtime",
 	"frame-executive/try-runtime",
     "frame-try-runtime/try-runtime",
     "frame-system/try-runtime",

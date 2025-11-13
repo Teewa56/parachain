@@ -2,6 +2,9 @@
 
 pub use pallet::*;
 
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+
 #[cfg(feature = "std")]
 use ark_serialize::CanonicalSerialize;
 
