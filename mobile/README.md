@@ -514,11 +514,11 @@ const spacing = {
 ## Development Phases
 
 ### Phase 1: Foundation
-- ✅ Project setup with Expo
-- ✅ Folder structure
-- ✅ Navigation setup (Expo Router)
-- ✅ Core UI components
-- ✅ Theme and styling system
+- Project setup with Expo
+- Folder structure
+- Navigation setup (Expo Router)
+- Core UI components
+- Theme and styling system
 
 ### Phase 2: Blockchain Integration
 - Polkadot.js API integration

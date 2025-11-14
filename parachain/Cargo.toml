@@ -35,15 +35,15 @@ pallet-xcm-credentials = { path = "./pallets/pallet-xcm-credentials", default-fe
 pallet-zk-credentials = { path = "./pallets/pallet-zk-credentials", default-features = false }
 
 # FRAME and Substrate primitives
-frame-support = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.5", package = "frame-support" }
-frame-system = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.5", package = "frame-system" }
-frame-executive = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.5", package = "frame-executive" }
-frame-benchmarking = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.5", package = "frame-benchmarking" }
-frame-system-benchmarking = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.5", package = "frame-system-benchmarking" }
-frame-system-rpc-runtime-api = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.5", package = "frame-system-rpc-runtime-api" }
-frame-try-runtime = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.5", package = "frame-try-runtime" }
+frame-support = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.5", package = "frame-support", default-features = false }
+frame-system = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.5", package = "frame-system", default-features = false }
+frame-executive = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.5", package = "frame-executive", default-features = false }
+frame-benchmarking = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.5", package = "frame-benchmarking", default-features = false }
+frame-system-benchmarking = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.5", package = "frame-system-benchmarking", default-features = false }
+frame-system-rpc-runtime-api = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.5", package = "frame-system-rpc-runtime-api", default-features = false }
+frame-try-runtime = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.5", package = "frame-try-runtime", default-features = false }
 
-sp-core = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.5", package = "sp-core" }
+sp-core = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.5", package = "sp-core", default-features = false }
 sp-std = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.5", package = "sp-std" }
 sp-io = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.5", package = "sp-io" }
 sp-api = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.5", package = "sp-api" }
@@ -62,7 +62,7 @@ pallet-timestamp = { git = "https://github.com/paritytech/polkadot-sdk", tag = "
 pallet-transaction-payment = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.5", package = "pallet-transaction-payment" }
 pallet-transaction-payment-rpc-runtime-api = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.5", package = "pallet-transaction-payment-rpc-runtime-api" }
 
-xcm = { version = "15.0.1", package = "staging-xcm" }
+xcm = { version = "15.0.1", package = "staging-xcm", default-features = false }
 xcm-builder = { version = "18.0.1", package = "staging-xcm-builder", default-features = false }
 xcm-executor = {version = "18.0.1", package = "staging-xcm-executor", default-features = false }
 pallet-xcm = { version = "18.0.0", default-features = false }
