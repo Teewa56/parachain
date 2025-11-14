@@ -96,7 +96,7 @@ pub mod pallet {
         _,
         Blake2_128Concat,
         H256, // proof hash
-        (T::AccountId, u64), // (verifier, timestamp)
+        (<T as frame_system::Config>::AccountId, u64), // (verifier, timestamp)
         OptionQuery,
     >;
 
@@ -117,11 +117,11 @@ pub mod pallet {
         /// Verification key registered [proof_type, registered_by]
         VerificationKeyRegistered { proof_type: ProofType, registered_by: H256 },
         /// Proof verified successfully [proof_hash, verifier, proof_type]
-        ProofVerified { proof_hash: H256, verifier: T::AccountId, proof_type: ProofType },
+        ProofVerified { proof_hash: H256, verifier: <T as frame_system::Config>::AccountId, proof_type: ProofType },
         /// Proof verification failed [proof_hash, reason]
         ProofVerificationFailed { proof_hash: H256, reason: Vec<u8> },
         /// Proof schema created [proof_type, creator]
-        ProofSchemaCreated { proof_type: ProofType, creator: T::AccountId },
+        ProofSchemaCreated { proof_type: ProofType, creator: <T as frame_system::Config>::AccountId },
     }
 
     #[pallet::error]
@@ -143,6 +143,7 @@ pub mod pallet {
         /// Schema not found
         SchemaNotFound,
         ProofTooOld,
+        SchemaAlreadyExists,
     }
 
     #[pallet::call]
@@ -245,6 +246,10 @@ pub mod pallet {
             field_descriptions: Vec<Vec<u8>>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
+            ensure!(
+                !ProofSchemas::<T>::contains_key(&proof_type),
+                Error::<T>::SchemaAlreadyExists
+            );
 
             ProofSchemas::<T>::insert(&proof_type, field_descriptions);
 
@@ -252,7 +257,6 @@ pub mod pallet {
                 proof_type,
                 creator: who,
             });
-
             Ok(())
         }
 
@@ -399,9 +403,13 @@ pub mod pallet {
         /// Validate proof timestamp is recent
         fn validate_proof_freshness(proof: &ZkProof) -> bool {
             let current_time = frame_system::Pallet::<T>::block_number();
-            let proof_age = current_time.saturated_into::<u64>().saturating_sub(proof.created_at);
+            let current_time_u64 = current_time.saturated_into::<u64>();
             
-            // Proof must be created within last hour (in seconds)
+            if proof.created_at > current_time_u64 {
+                return false;
+            }
+            let proof_age = current_time_u64.saturating_sub(proof.created_at);
+
             proof_age <= MAX_PROOF_AGE_SECS
         }
 

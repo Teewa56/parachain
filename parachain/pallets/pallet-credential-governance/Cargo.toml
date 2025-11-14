@@ -13,7 +13,6 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 codec = { features = ["derive"], workspace = true }
-frame = { workspace = true, features = ["experimental", "runtime"], default-features = false }
 scale-info = { features = ["derive"], workspace = true }
 frame-support = { workspace = true, default-features = false }
 frame-system = { workspace = true, default-features = false }
@@ -30,7 +29,6 @@ sp-io = { workspace = true }
 default = ["std"]
 std = [
     "codec/std",
-    "frame/std",
     "scale-info/std",
     "frame-support/std",
     "frame-system/std",
@@ -40,5 +38,5 @@ std = [
     "sp-io/std",
     "sp-runtime/std",
 ]
-runtime-benchmarks = ["frame/runtime-benchmarks"]
-try-runtime = ["frame/try-runtime"]
+runtime-benchmarks = ["frame-support/runtime-benchmarks"]
+try-runtime = ["frame-support/try-runtime"]

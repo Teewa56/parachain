@@ -83,7 +83,6 @@ scale-info = { version = "2.11.6", default-features = false }
 serde_json = { version = "1.0.132", default-features = false }
 smallvec = { version = "1.11.0", default-features = false }
 substrate-wasm-builder = { version = "26.0.1", default-features = false }
-frame = { version = "0.9.1", default-features = false, package = "polkadot-sdk-frame" }
 
 [profile.release]
 opt-level = 3

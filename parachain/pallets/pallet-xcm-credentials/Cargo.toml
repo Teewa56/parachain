@@ -16,7 +16,6 @@ codec = { features = ["derive"], workspace = true }
 scale-info = { features = ["derive"], workspace = true }
 cumulus-pallet-parachain-system = { workspace = true }
 
-frame = { workspace = true, features = ["experimental", "runtime"], default-features = false }
 frame-support = { workspace = true, default-features = false }
 frame-system = { workspace = true, default-features = false }  
 frame-executive = { workspace = true, default-features = false }
@@ -38,7 +37,6 @@ default = ["std"]
 std = [
   "codec/std",
   "scale-info/std",
-  "frame/std",
   "sp-std/std",
   "sp-runtime/std",
   "xcm-builder/std",
@@ -49,5 +47,5 @@ std = [
   "frame-system/std",
   "frame-executive/std",
 ]
-runtime-benchmarks = ["frame/runtime-benchmarks"]
-try-runtime = ["frame/try-runtime"]
+runtime-benchmarks = ["frame-support/runtime-benchmarks"]
+try-runtime = ["frame-support/try-runtime"]

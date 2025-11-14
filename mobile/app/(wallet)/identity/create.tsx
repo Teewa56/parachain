@@ -1,9 +1,7 @@
 import { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
-import { useIdentityStore } from '../../../src/store/identityStore';
-import { useAuthStore } from '../../../src/store/authStore';
-import { useUIStore } from '../../../src/store/uiStore';
+import { useIdentityStore, useAuthStore, useUIStore } from '../../../src/store';
 import { keyManagement } from '../../../src/services/crypto/keyManagement';
 import { Button } from '../../../src/components/common/Button';
 import { Card } from '../../../src/components/common/Card';
@@ -199,7 +197,7 @@ const styles = StyleSheet.create({
     infoTitle: {
         fontSize: 18,
         fontWeight: '600',
-        color: '#20283aff',
+        color: '#111827',
         marginBottom: 8,
     },
     infoText: {
