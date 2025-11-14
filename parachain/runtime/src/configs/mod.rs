@@ -25,6 +25,7 @@
 
 mod xcm_config;
 use super::OriginCaller;
+use xcm_config::XcmRouter;
 
 use polkadot_sdk::{staging_parachain_info as parachain_info, staging_xcm as xcm, *};
 #[cfg(not(feature = "runtime-benchmarks"))]
@@ -347,6 +348,12 @@ impl pallet_verifiable_credentials::Config for Runtime {
 impl pallet_zk_credentials::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type WeightInfo = pallet_zk_credentials::weights::SubstrateWeight<Runtime>;
+}
+
+parameter_types! {
+    pub const ProposalDeposit: Balance = 100 * UNIT;
+    pub const VotingPeriod: BlockNumber = 7 * DAYS;
+    pub const ApprovalThreshold: u8 = 66;
 }
 
 impl pallet_credential_governance::Config for Runtime {

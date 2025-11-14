@@ -8,19 +8,9 @@ mod benchmarking;
 pub mod weights;
 use weights::WeightInfo;
 
-#[cfg(feature = "std")]
-use ark_serialize::CanonicalSerialize;
-
 use ark_serialize::CanonicalDeserialize;
 use ark_ff::PrimeField;
-
-#[cfg(feature = "std")]
 use ark_bn254::{Bn254, Fr};
-#[cfg(not(feature = "std"))]
-type Bn254 = ();
-#[cfg(not(feature = "std"))]
-type Fr = ();
-
 use ark_groth16::{Proof, VerifyingKey, prepare_verifying_key};
 
 const MAX_PROOF_AGE_SECS: u64 = 3600; // 1 hour in seconds
@@ -432,10 +422,10 @@ pub mod pallet {
 pub mod circuits {
     use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
     use ark_r1cs_std::prelude::*;
+    use ark_r1cs_std::fields::fp::FpVar;
     use ark_bn254::Fr;
 
     /// Age verification circuit
-    #[cfg(feature = "std")]
     pub struct AgeVerificationCircuit {
         pub birth_year: Option<u32>,
         pub age_threshold: u32,
@@ -466,15 +456,14 @@ pub mod circuits {
     }
 
     /// Student Status Circuit
-    #[cfg(feature = "std")]
     pub struct StudentStatusCircuit {
         pub student_id: Option<Vec<u8>>,
         pub institution_hash: [u8; 32],
         pub enrollment_date: Option<u64>,
         pub is_active: bool,
-        pub university_signature: Option<Vec<u8>>,  // signature verification
-        pub merkle_proof: Vec<Fr>,                   // merkle tree inclusion
-        pub merkle_root: [u8; 32],                   // institution's student tree root
+        pub university_signature: Option<Vec<u8>>,
+        pub merkle_proof: Vec<Fr>,
+        pub merkle_root: [u8; 32],
     }
 
     impl ConstraintSynthesizer<Fr> for StudentStatusCircuit {
@@ -517,11 +506,10 @@ pub mod circuits {
             institution_hash_var.enforce_not_equal(&FpVar::zero())?;
 
             // Constraint 4: Enrollment date must be in past
-            let now_var = FpVar::new_input(cs.clone(), || Ok(Fr::from(0u64)))?; // Client provides current timestamp
+            let now_var = FpVar::new_input(cs.clone(), || Ok(Fr::from(0u64)))?;
             enrollment_date_var.enforce_cmp(&now_var, core::cmp::Ordering::Less, false)?;
 
             // Constraint 5: Merkle tree inclusion proof
-            // Verify that student_id_hash is in the institution's merkle tree
             let mut current_hash = student_id_hash.clone();
             for proof_element in &self.merkle_proof {
                 let sibling = FpVar::new_witness(cs.clone(), || Ok(*proof_element))?;
@@ -551,7 +539,6 @@ pub mod circuits {
     }
 
     /// Vaccination Status Circuit
-    #[cfg(feature = "std")]
     pub struct VaccinationStatusCircuit {
         pub patient_id: Option<Vec<u8>>,
         pub vaccination_type: Option<Vec<u8>>,
@@ -615,7 +602,6 @@ pub mod circuits {
     }
 
     /// Employment Status Circuit
-    #[cfg(feature = "std")]
     pub struct EmploymentStatusCircuit {
         pub employee_id: Option<Vec<u8>>,
         pub employer_hash: [u8; 32],
@@ -668,7 +654,6 @@ pub mod circuits {
     }
 
     /// Custom Proof Circuit
-    #[cfg(feature = "std")]
     pub struct CustomCircuit {
         pub custom_data: Vec<Option<Vec<u8>>>,
         pub public_inputs_count: usize,
@@ -679,76 +664,6 @@ pub mod circuits {
             // Minimal constraint - implementations handled by circuit compiler
             let _dummy = FpVar::new_witness(cs, || Ok(Fr::from(1u64)))?;
             Ok(())
-        }
-    }
-
-    impl<T: Config> Pallet<T> {
-        fn estimate_proof_verification_weight(proof: &ZkProof) -> Weight {
-            // Base weight for proof setup
-            let base_weight = 1_000_000u64;  // 1ms
-            
-            match proof.proof_type {
-                ProofType::AgeAbove => {
-                    // Simple comparison: ~2ms
-                    Weight::from_parts(base_weight.saturating_mul(2), 64 * 1024)
-                },
-                ProofType::StudentStatus => {
-                    // Signature verification + merkle tree: ~5ms
-                    Weight::from_parts(base_weight.saturating_mul(5), 128 * 1024)
-                },
-                ProofType::VaccinationStatus => {
-                    // Medical data validation: ~4ms
-                    Weight::from_parts(base_weight.saturating_mul(4), 100 * 1024)
-                },
-                ProofType::EmploymentStatus => {
-                    // Employment verification: ~4ms
-                    Weight::from_parts(base_weight.saturating_mul(4), 100 * 1024)
-                },
-                ProofType::Custom => {
-                    // Conservative estimate: ~10ms
-                    Weight::from_parts(base_weight.saturating_mul(10), 256 * 1024)
-                },
-            }
-        }
-
-        fn estimate_batch_proof_weight(proof_count: u32) -> Weight {
-            // ~2ms per proof + 1ms overhead
-            let per_proof_weight = 2_000_000u64;
-            let overhead = 1_000_000u64;
-            
-            Weight::from_parts(
-                overhead.saturating_add(per_proof_weight.saturating_mul(proof_count as u64)),
-                64 * 1024 * (proof_count as u64)
-            )
-        }
-    }
-
-    impl<T: Config> Pallet<T> {
-        /// Validate proof timestamp is recent
-        fn validate_proof_freshness(proof: &ZkProof) -> bool {
-            let current_time = T::TimeProvider::now().as_secs();
-            let proof_age = current_time.saturating_sub(proof.created_at);
-            
-            // Proof must be created within last hour
-            proof_age <= MAX_PROOF_AGE_SECS
-        }
-    }
-
-    impl<T: Config> Pallet<T> {
-        /// Get verification key by proof type (public function for inter-pallet calls)
-        pub fn get_verification_key(proof_type: &ProofType) -> Option<CircuitVerifyingKey> {
-            VerifyingKeys::<T>::get(proof_type)
-        }
-
-        /// Convert ZK proof type to internal proof type
-        pub fn zk_credential_type_to_proof_type(zk_type: &ZkCredentialType) -> ProofType {
-            match zk_type {
-                ZkCredentialType::StudentStatus => ProofType::StudentStatus,
-                ZkCredentialType::VaccinationStatus => ProofType::VaccinationStatus,
-                ZkCredentialType::EmploymentStatus => ProofType::EmploymentStatus,
-                ZkCredentialType::AgeVerification => ProofType::AgeAbove,
-                ZkCredentialType::Custom => ProofType::Custom,
-            }
         }
     }
 }
