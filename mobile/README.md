@@ -135,6 +135,35 @@ Proof/Credential → Generate QR → Display → Scan by Verifier
 }
 ```
 
+Local ZK Proof Generation (Native Mobile Prover)
+
+The mobile application includes a native zero-knowledge proof generator implemented in Rust and integrated into the Expo app through custom native modules. This replaces the earlier mock proof generation logic.
+
+Because real zkSNARK/zkProof generation (Groth16/Plonk/Halo2) cannot run inside the Expo JavaScript runtime or Expo Go, we added:
+
+A Rust proving engine (rust-prover/)
+
+Compiled into:
+
+Android: .so libraries (JNI-loaded)
+
+iOS: .xcframework (Swift bridge)
+
+A React Native native module that exposes the prover to JavaScript
+
+A custom Expo Config Plugin so the prover is included automatically in all EAS builds
+
+With this architecture:
+
+Private credential data is handled only on-device, never sent to a server.
+
+All proof generation is performed natively for performance and security.
+
+The generated proof can be submitted directly to the identity parachain, which performs on-chain verification.
+
+This system is required for production-grade ZK workflows because Expo and React Native cannot execute real proving code in JavaScript or WASM alone.
+
+
 ### Security Features
 - **Encrypted Storage**: expo-secure-store (hardware-backed)
 - **Biometric Auth**: expo-local-authentication
