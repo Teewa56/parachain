@@ -940,7 +940,6 @@ identity-parachain/
 │   │
 │   ├── build.gradle
 │   ├── settings.gradle
-│   └── CMakeLists.txt                    # Optional if using CMake
 │
 ├── ios/
 │   ├── ZKProverModule.swift              # RN module implemented in Swift
@@ -951,7 +950,7 @@ identity-parachain/
 ├── modules/
 │   └── zk-prover-expo-plugin/            # **Expo Config Plugin**
 │       ├── app.plugin.js
-│       ├── withZKProver.js               # Adds libs, edits Podfile, Gradle, etc.
+│       ├── withZKProver.js               
 │       └── README.md
 │
 ├── scripts/
