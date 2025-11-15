@@ -1,6 +1,6 @@
-# 🔐 Advanced Identity Parachain
+# 🔐 PortableID
 
-A production-ready Polkadot parachain for decentralized identity management with zero-knowledge proofs, verifiable credentials, on-chain governance, and cross-chain interoperability.
+A digital decentralised identity wallet for decentralized identity management with zero-knowledge proofs, verifiable credentials, on-chain governance, and cross-chain interoperability.
 
 ## 📋 Table of Contents
 
@@ -26,7 +26,7 @@ A production-ready Polkadot parachain for decentralized identity management with
 
 ## Overview
 
-**Identity Parachain** is a decentralized identity (DID) solution built on Polkadot that enables self-sovereign identity management with privacy-preserving verification. Users can prove claims about themselves without revealing underlying sensitive data using zero-knowledge proofs (ZK-SNARKs).
+**PortableID** is a decentralized identity (DID) solution built on Polkadot that enables self-sovereign identity management with privacy-preserving verification. Users can prove claims about themselves without revealing underlying sensitive data using zero-knowledge proofs (ZK-SNARKs).
 
 ### Key Differentiators
 
@@ -73,7 +73,7 @@ A production-ready Polkadot parachain for decentralized identity management with
                             ↓↓↓
 
 ┌─────────────────────────────────────────────────────────────┐
-│ Identity Parachain Solution                                 │
+│ PortableID Solution                                 │
 ├─────────────────────────────────────────────────────────────┤
 │ User DID → Credential (Encrypted Hash) → ZK Proof          │
 │ Verifier Only Sees: "User is a valid student" ✓            │
@@ -199,17 +199,17 @@ substrate-wasm-builder = "26.0.1"
         ┌─────────────────────┼─────────────────────┐
         │                     │                     │
         ▼                     ▼                     ▼
-   ┌─────────┐          ┌──────────┐          ┌─────────┐
-   │Parachain│          │ Identity │          │  Other  │
-   │  A      │          │ Parachain│          │Parachains
-   └─────────┘          └──────────┘          └─────────┘
+   ┌─────────┐          ┌──────────┐          ┌──────────┐
+   │Parachain│          │ Identity │          │  Other   │
+   │  A      │          │ Parachain│          │Parachains│
+   └─────────┘          └──────────┘          └──────────┘
                              │
         ┌────────────────────┼────────────────────┐
         │                    │                    │
         ▼                    ▼                    ▼
    ┌─────────────┐  ┌──────────────┐  ┌──────────────┐
    │   Mobile    │  │    Web       │  │   XCM        │
-   │   Wallet    │  │  Interface   │  │ Integration  │
+   │   Wallet    │  │   Portal     │  │ Integration  │
    └─────────────┘  └──────────────┘  └──────────────┘
 ```
 
@@ -986,7 +986,7 @@ identity-parachain/
 | `parachain/Cargo.toml` | Workspace config with all dependencies |
 | `node/src/main.rs` | Node entry point |
 | `node/src/service.rs` | Parachain service setup |
-| `runtime/src/lib.rs` | Runtime construction (2500+ lines) |
+| `runtime/src/lib.rs` | Runtime construction |
 | `runtime/src/apis.rs` | Runtime APIs for clients |
 | `pallet-identity-registry/src/lib.rs` | DID management pallet |
 | `pallet-verifiable-credentials/src/lib.rs` | Credential issuance pallet |
@@ -1060,6 +1060,46 @@ cd mobile
 npm install
 npm run ios  # or npm run android
 ```
+
+# mobile .env file
+# Environment Configuration
+NODE_ENV=development #for development
+
+# Network Configuration
+#development
+PARACHAIN_WS_ENDPOINT=ws://127.0.0.1:9944
+PARACHAIN_ID=1000
+NETWORK_NAME=Local Development
+
+# API Configuration
+API_TIMEOUT=30000
+ENABLE_LOGGING=true
+
+# Feature Flags
+ENABLE_BIOMETRIC=true
+ENABLE_QR_SHARING=true
+ENABLE_MULTI_IDENTITY=false
+ENABLE_CROSS_CHAIN=false
+
+# App Configuration
+APP_VERSION=1.0.0
+MIN_PIN_LENGTH=6
+MAX_PIN_LENGTH=8
+
+# Security
+PROOF_VALIDITY_PERIOD=3600
+MAX_FIELDS_TO_DISCLOSE=50
+PROOF_FRESHNESS_SECONDS=86400
+
+# Storage Keys (Auto-prefixed with @identity_wallet/)
+STORAGE_PREFIX=@identity_wallet
+
+#Network Endpoints 
+
+#Testnet
+PARACHAIN_WS_ENDPOINT=wss://rococo-parachain-testnet.example.com
+PARACHAIN_ID=1000
+NETWORK_NAME=Rococo Testnet
 
 ---
 
@@ -1159,7 +1199,7 @@ pub mod pallet {
 
 | File | Contains |
 |------|----------|
-| `.env.example` | Template for environment variables |
+| `.env` | Template for environment variables |
 | `Cargo.toml` | Rust dependencies |
 | `package.json` | Node dependencies |
 | `tsconfig.json` | TypeScript settings |
