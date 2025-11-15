@@ -911,72 +911,7 @@ identity-parachain/
 │   │       └── backup.tsx
 │   │
 │
-├── src/
-│   │
-│   ├── zk/                               # **ZK Prover Integration**
-│   │   ├── index.ts                      # Public export
-│   │   ├── prover.ts                     # JS wrapper for native module
-│   │   ├── types.ts                      # Proof types
-│   │   └── useProof.ts                   # React hook for invoking prover
-│   │
-│   ├── substrate/
-│   │   ├── api.ts                        # Polkadot.js API
-│   │   ├── calls.ts
-│   │   ├── queries.ts
-│   │   ├── types.ts
-│   │   └── utils.ts
-│   │
-│   ├── services/
-│   │   ├── crypto/
-│   │   │   ├── keyManagement.ts
-│   │   │   ├── signature.ts
-│   │   │   └── hashing.ts
-│   │   │
-│   │   ├── storage/
-│   │   │   ├── secureStorage.ts
-│   │   │   └── localStorage.ts
-│   │   │
-│   │   └── qr/
-│   │       ├── qrGenerator.ts
-│   │       └── qrScanner.ts
-│   │
-│   ├── store/
-│   │   ├── authStore.ts
-│   │   ├── identityStore.ts
-│   │   ├── credentialStore.ts
-│   │   ├── proofStore.ts
-│   │   └── uiStore.ts
-│   │
-│   ├── hooks/
-│   │   ├── useAuth.ts
-│   │   ├── useCredentials.ts
-│   │   ├── useSubstrate.ts
-│   │   ├── useBiometric.ts
-│   │   └── useNavigation.ts
-│   │
-│   ├── components/
-│   │   ├── common/
-│   │   │   ├── Button.tsx
-│   │   │   ├── Input.tsx
-│   │   │   ├── Card.tsx
-│   │   │   └── Loading.tsx
-│   │   │
-│   │   ├── proof/
-│   │   │   ├── FieldSelector.tsx
-│   │   │   ├── ProofPreview.tsx
-│   │   │   └── ResultCard.tsx
-│   │
-│   ├── utils/
-│   │   ├── formatting.ts
-│   │   ├── validation.ts
-│   │   ├── errors.ts
-│   │   ├── constants.ts
-│   │   └── helpers.ts
-│   │
-│   └── config/
-│       ├── env.ts
-│       └── substrate.ts
-│
+├── src/ #src code. 
 │
 ├── rust-prover/                          # **Rust ZK Prover crate**
 │   ├── Cargo.toml
