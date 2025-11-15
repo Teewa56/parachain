@@ -1,8 +1,5 @@
-// Re-export all types from subdirectories
 export * from './substrate';
 export * from './api';
-export * from './credential';
-export * from './identity';
 
 // Common utility types
 export type Nullable<T> = T | null;

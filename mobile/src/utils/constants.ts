@@ -1,6 +1,3 @@
-// Application constants
-
-// Storage keys
 export const STORAGE_KEYS = {
     // Authentication
     IS_AUTHENTICATED: '@identity_wallet/is_authenticated',
