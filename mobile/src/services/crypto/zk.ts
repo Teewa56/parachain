@@ -1,413 +1,377 @@
-import { hashData } from '../substrate/utils';
-import type { ProofType, ZkProof } from '../../types/substrate';
-
-/**
- * Zero-Knowledge Proof Generation Service
- * 
- * This service provides client-side ZK proof generation capabilities.
- * In production, this would integrate with actual ZK proof libraries
- * like snarkjs or circom-based proof systems.
- */
+import type { Credential, ProofType, ZkProof } from '../../types/substrate';
+import { hexToU8a, u8aToHex } from '@polkadot/util';
+import { blake2AsU8a } from '@polkadot/util-crypto';
 
 interface ProofGenerationParams {
-    credentialId: string;
-    credentialType: string;
+    credential: Credential;
     fieldsToReveal: number[];
     proofType: ProofType;
-    publicInputs: string[];
-    privateInputs: Record<string, any>;
 }
 
 interface GeneratedProof {
     proof: ZkProof;
-    proofHash: string;
-    publicInputs: Uint8Array[];
+    revealedFields: Map<number, any>;
 }
 
-class ZKProofService {
+class ZkProofService {
     /**
      * Generate a zero-knowledge proof for selective disclosure
      */
     async generateProof(params: ProofGenerationParams): Promise<GeneratedProof> {
-        const {
-            credentialId,
-            credentialType,
-            fieldsToReveal,
-            proofType,
-            publicInputs,
-            privateInputs,
-        } = params;
+        const { credential, fieldsToReveal, proofType } = params;
 
         try {
-            // Step 1: Validate inputs
-            this.validateProofParams(params);
-
-            // Step 2: Prepare circuit inputs
-            const circuitInputs = this.prepareCircuitInputs(
-                publicInputs,
-                privateInputs,
-                fieldsToReveal
-            );
-
-            // Step 3: Generate proof (mock implementation)
-            // In production, this would call actual ZK proof generation
-            const proofData = await this.generateZKProofData(
-                proofType,
-                circuitInputs
-            );
-
-            // Step 4: Prepare public inputs as Uint8Array
-            const publicInputsBytes = this.preparePublicInputs(
-                publicInputs,
-                fieldsToReveal
-            );
-
-            // Step 5: Create ZK proof object
-            const now = Math.floor(Date.now() / 1000);
+            // Generate nonce for replay attack prevention
             const nonce = this.generateNonce();
 
-            const zkProof: ZkProof = {
+            // Construct public inputs from revealed fields
+            const publicInputs = this.constructPublicInputs(
+                credential,
+                fieldsToReveal,
+                proofType
+            );
+
+            // Generate mock proof data (in production, this would call actual ZK circuit)
+            const proofData = await this.generateProofData(
+                credential,
+                fieldsToReveal,
+                publicInputs,
+                nonce
+            );
+
+            // Create the ZK proof structure
+            const proof: ZkProof = {
                 proofType,
                 proofData,
-                publicInputs: publicInputsBytes,
-                credentialHash: credentialId,
-                createdAt: now,
+                publicInputs,
+                credentialHash: credential.dataHash,
+                createdAt: Math.floor(Date.now() / 1000),
                 nonce,
             };
 
-            // Step 6: Calculate proof hash
-            const proofHash = this.calculateProofHash(zkProof);
+            // Create revealed fields map for display
+            const revealedFields = this.extractRevealedFields(
+                credential,
+                fieldsToReveal
+            );
+
+            console.log('ZK proof generated successfully');
+            console.log('Proof type:', proofType);
+            console.log('Fields revealed:', fieldsToReveal.length);
 
             return {
-                proof: zkProof,
-                proofHash,
-                publicInputs: publicInputsBytes,
+                proof,
+                revealedFields,
             };
         } catch (error) {
-            console.error('Proof generation failed:', error);
-            throw new Error(
-                error instanceof Error ? error.message : 'Failed to generate proof'
-            );
+            console.error('ZK proof generation failed:', error);
+            throw error;
         }
     }
 
     /**
-     * Validate proof generation parameters
+     * Generate a unique nonce for replay attack prevention
      */
-    private validateProofParams(params: ProofGenerationParams): void {
-        if (!params.credentialId) {
-            throw new Error('Credential ID is required');
-        }
-
-        if (!params.fieldsToReveal || params.fieldsToReveal.length === 0) {
-            throw new Error('At least one field must be selected');
-        }
-
-        if (params.fieldsToReveal.length > 50) {
-            throw new Error('Cannot reveal more than 50 fields');
-        }
-
-        if (!params.publicInputs || params.publicInputs.length === 0) {
-            throw new Error('Public inputs are required');
-        }
+    private generateNonce(): string {
+        const timestamp = Date.now();
+        const random = Math.random();
+        const data = new Uint8Array([
+            ...new Uint8Array(new Float64Array([timestamp]).buffer),
+            ...new Uint8Array(new Float64Array([random]).buffer),
+        ]);
+        
+        const hash = blake2AsU8a(data, 256);
+        return u8aToHex(hash);
     }
 
     /**
-     * Prepare inputs for the ZK circuit
+     * Construct public inputs for the ZK proof
      */
-    private prepareCircuitInputs(
-        publicInputs: string[],
-        privateInputs: Record<string, any>,
-        fieldsToReveal: number[]
-    ): Record<string, any> {
-        return {
-            // Public inputs (visible to verifier)
-            publicInputs: publicInputs.map(input => this.stringToFieldElement(input)),
-            
-            // Private inputs (hidden from verifier)
-            privateInputs: Object.entries(privateInputs).reduce((acc, [key, value]) => {
-                acc[key] = this.stringToFieldElement(value.toString());
-                return acc;
-            }, {} as Record<string, string>),
-            
-            // Field disclosure bitmap
-            fieldsToReveal: this.createFieldsBitmap(fieldsToReveal),
-        };
-    }
-
-    /**
-     * Generate ZK proof data (mock implementation)
-     * In production, this would use actual ZK proof libraries
-     */
-    private async generateZKProofData(
-        proofType: ProofType,
-        circuitInputs: Record<string, any>
-    ): Promise<Uint8Array> {
-        // Simulate proof generation delay
-        await this.simulateProofGeneration();
-
-        // Mock proof data generation
-        // In production, this would be actual Groth16 proof generation
-        const proofString = JSON.stringify({
-            type: proofType,
-            inputs: circuitInputs,
-            timestamp: Date.now(),
-        });
-
-        // Convert to Uint8Array
-        const encoder = new TextEncoder();
-        const proofBytes = encoder.encode(proofString);
-
-        // Pad to standard proof size (Groth16 proofs are typically 192 bytes)
-        const paddedProof = new Uint8Array(192);
-        paddedProof.set(proofBytes.slice(0, 192));
-
-        return paddedProof;
-    }
-
-    /**
-     * Simulate proof generation (for realistic UX)
-     */
-    private async simulateProofGeneration(): Promise<void> {
-        // Simulate computational delay (real ZK proofs take time)
-        await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1000));
-    }
-
-    /**
-     * Prepare public inputs as byte arrays
-     */
-    private preparePublicInputs(
-        publicInputs: string[],
-        fieldsToReveal: number[]
+    private constructPublicInputs(
+        credential: Credential,
+        fieldsToReveal: number[],
+        proofType: ProofType
     ): Uint8Array[] {
         const inputs: Uint8Array[] = [];
 
-        // Add public inputs
-        publicInputs.forEach(input => {
-            const bytes = this.stringToBytes(input);
-            inputs.push(bytes);
-        });
+        // Add credential hash
+        inputs.push(hexToU8a(credential.dataHash));
 
-        // Add fields bitmap
+        // Add fields bitmap (which fields are revealed)
         const bitmap = this.createFieldsBitmap(fieldsToReveal);
-        const bitmapBytes = this.numberToBytes(bitmap);
-        inputs.push(bitmapBytes);
+        inputs.push(bitmap);
+
+        // Add issuer DID
+        inputs.push(hexToU8a(credential.issuer));
+
+        // Add proof type hash
+        const typeHash = blake2AsU8a(proofType, 256);
+        inputs.push(typeHash);
+
+        // Add timestamp
+        const timestamp = Math.floor(Date.now() / 1000);
+        const timestampBytes = new Uint8Array(32);
+        new DataView(timestampBytes.buffer).setBigUint64(24, BigInt(timestamp), false);
+        inputs.push(timestampBytes);
 
         return inputs;
     }
 
     /**
-     * Create bitmap representing disclosed fields
+     * Create a bitmap representing which fields are revealed
      */
-    private createFieldsBitmap(fieldsToReveal: number[]): number {
-        let bitmap = 0;
-        fieldsToReveal.forEach(fieldIndex => {
-            if (fieldIndex < 64) {
-                bitmap |= 1 << fieldIndex;
+    private createFieldsBitmap(fieldsToReveal: number[]): Uint8Array {
+        let bitmap = 0n;
+
+        for (const fieldIndex of fieldsToReveal) {
+            if (fieldIndex >= 64) {
+                throw new Error('Field index too large (max 63)');
             }
-        });
-        return bitmap;
-    }
+            bitmap |= 1n << BigInt(fieldIndex);
+        }
 
-    /**
-     * Convert string to field element (mock)
-     */
-    private stringToFieldElement(str: string): string {
-        // In production, this would convert to actual field element
-        // For now, just hash the string
-        return hashData(str);
-    }
-
-    /**
-     * Convert string to bytes
-     */
-    private stringToBytes(str: string): Uint8Array {
-        const encoder = new TextEncoder();
-        const bytes = encoder.encode(str);
-        
-        // Pad to 32 bytes
-        const padded = new Uint8Array(32);
-        padded.set(bytes.slice(0, 32));
-        
-        return padded;
-    }
-
-    /**
-     * Convert number to bytes
-     */
-    private numberToBytes(num: number): Uint8Array {
-        const bytes = new Uint8Array(32);
-        const view = new DataView(bytes.buffer);
-        
-        // Store as big-endian uint64
-        view.setBigUint64(24, BigInt(num), false);
-        
+        const bytes = new Uint8Array(8);
+        new DataView(bytes.buffer).setBigUint64(0, bitmap, true);
         return bytes;
     }
 
     /**
-     * Generate random nonce for replay protection
+     * Generate proof data (mock implementation)
+     * In production, this would call the actual Groth16 proving algorithm
      */
-    private generateNonce(): string {
-        const randomBytes = new Uint8Array(32);
-        for (let i = 0; i < 32; i++) {
-            randomBytes[i] = Math.floor(Math.random() * 256);
-        }
+    private async generateProofData(
+        credential: Credential,
+        fieldsToReveal: number[],
+        publicInputs: Uint8Array[],
+        nonce: string
+    ): Promise<Uint8Array> {
+        // Combine all data for proof generation
+        const dataToHash = new Uint8Array([
+            ...hexToU8a(credential.dataHash),
+            ...hexToU8a(credential.issuer),
+            ...hexToU8a(credential.subject),
+            ...new Uint8Array(fieldsToReveal),
+            ...publicInputs.flat(),
+            ...hexToU8a(nonce),
+        ]);
+
+        // Generate deterministic proof data
+        // NOTE: In production, this would be replaced with actual Groth16 proof generation
+        const proofHash = blake2AsU8a(dataToHash, 256);
         
-        return `0x${Array.from(randomBytes)
-            .map(b => b.toString(16).padStart(2, '0'))
-            .join('')}`;
+        // Extend to 256 bytes (typical Groth16 proof size)
+        const proofData = new Uint8Array(256);
+        for (let i = 0; i < 256; i++) {
+            proofData[i] = proofHash[i % 32] ^ (i % 256);
+        }
+
+        return proofData;
     }
 
     /**
-     * Calculate proof hash for on-chain storage
+     * Extract revealed field values for display
      */
-    private calculateProofHash(proof: ZkProof): string {
-        // Concatenate all proof components
-        const components = [
-            proof.proofData,
-            ...proof.publicInputs.flat(),
-            new TextEncoder().encode(proof.credentialHash),
-            new TextEncoder().encode(proof.nonce),
-        ];
+    private extractRevealedFields(
+        credential: Credential,
+        fieldsToReveal: number[]
+    ): Map<number, any> {
+        const revealedFields = new Map<number, any>();
 
-        const combined = new Uint8Array(
-            components.reduce((acc, arr) => acc + arr.length, 0)
+        // Mock field data extraction
+        // In production, this would decrypt and parse the actual credential data
+        const fieldNames = this.getFieldNamesForType(credential.credentialType);
+
+        fieldsToReveal.forEach((index) => {
+            if (index < fieldNames.length) {
+                revealedFields.set(index, {
+                    name: fieldNames[index],
+                    value: `[Field ${index} Value]`,
+                });
+            }
+        });
+
+        return revealedFields;
+    }
+
+    /**
+     * Get field names for a credential type
+     */
+    private getFieldNamesForType(credentialType: string): string[] {
+        const fieldMappings: Record<string, string[]> = {
+            Education: [
+                'institution',
+                'studentId',
+                'status',
+                'gpa',
+                'enrollmentDate',
+                'graduationDate',
+            ],
+            Health: [
+                'patientId',
+                'vaccinationType',
+                'vaccinationDate',
+                'expiryDate',
+                'provider',
+                'batchNumber',
+            ],
+            Employment: [
+                'employeeId',
+                'employer',
+                'position',
+                'startDate',
+                'endDate',
+                'salary',
+            ],
+            Age: [
+                'birthYear',
+                'birthMonth',
+                'birthDay',
+                'ageThreshold',
+            ],
+            Address: [
+                'street',
+                'city',
+                'state',
+                'zipCode',
+                'country',
+            ],
+            Custom: [
+                'field0',
+                'field1',
+                'field2',
+                'field3',
+                'field4',
+            ],
+        };
+
+        return fieldMappings[credentialType] || fieldMappings.Custom;
+    }
+
+    /**
+     * Validate proof parameters before generation
+     */
+    validateProofParams(params: ProofGenerationParams): {
+        valid: boolean;
+        error?: string;
+    } {
+        const { credential, fieldsToReveal, proofType } = params;
+
+        if (!credential) {
+            return { valid: false, error: 'Credential is required' };
+        }
+
+        if (!fieldsToReveal || fieldsToReveal.length === 0) {
+            return { valid: false, error: 'At least one field must be revealed' };
+        }
+
+        if (fieldsToReveal.length > 50) {
+            return { valid: false, error: 'Too many fields selected (max 50)' };
+        }
+
+        const fieldNames = this.getFieldNamesForType(credential.credentialType);
+        const invalidFields = fieldsToReveal.filter(
+            (index) => index < 0 || index >= fieldNames.length
         );
 
-        let offset = 0;
-        components.forEach(component => {
-            combined.set(component, offset);
-            offset += component.length;
-        });
-
-        // Hash the combined data
-        return hashData(combined);
-    }
-
-    /**
-     * Verify proof structure before submission
-     */
-    verifyProofStructure(proof: ZkProof): boolean {
-        try {
-            // Check proof data exists
-            if (!proof.proofData || proof.proofData.length === 0) {
-                return false;
-            }
-
-            // Check public inputs exist
-            if (!proof.publicInputs || proof.publicInputs.length === 0) {
-                return false;
-            }
-
-            // Check credential hash
-            if (!proof.credentialHash || proof.credentialHash === '0x0') {
-                return false;
-            }
-
-            // Check nonce
-            if (!proof.nonce || proof.nonce === '0x0') {
-                return false;
-            }
-
-            // Check timestamp is reasonable
-            const now = Math.floor(Date.now() / 1000);
-            if (proof.createdAt > now || proof.createdAt < now - 3600) {
-                return false;
-            }
-
-            return true;
-        } catch (error) {
-            console.error('Proof structure verification failed:', error);
-            return false;
+        if (invalidFields.length > 0) {
+            return {
+                valid: false,
+                error: `Invalid field indices: ${invalidFields.join(', ')}`,
+            };
         }
+
+        if (credential.status !== 'Active') {
+            return {
+                valid: false,
+                error: `Credential is ${credential.status}, cannot generate proof`,
+            };
+        }
+
+        // Check expiration
+        if (credential.expiresAt > 0) {
+            const now = Math.floor(Date.now() / 1000);
+            if (now > credential.expiresAt) {
+                return { valid: false, error: 'Credential has expired' };
+            }
+        }
+
+        return { valid: true };
     }
 
     /**
-     * Generate age verification proof
+     * Get available fields for a credential
      */
-    async generateAgeProof(
-        credentialId: string,
-        ageThreshold: number,
-        currentYear: number,
-        birthYear: number
-    ): Promise<GeneratedProof> {
-        const publicInputs = [
-            ageThreshold.toString(),
-            currentYear.toString(),
-        ];
+    getAvailableFields(credential: Credential): Array<{
+        index: number;
+        name: string;
+        description: string;
+    }> {
+        const fieldNames = this.getFieldNamesForType(credential.credentialType);
 
-        const privateInputs = {
-            birthYear: birthYear.toString(),
-        };
-
-        return this.generateProof({
-            credentialId,
-            credentialType: 'Age',
-            fieldsToReveal: [1, 2], // Age and threshold
-            proofType: 'AgeAbove' as ProofType,
-            publicInputs,
-            privateInputs,
-        });
+        return fieldNames.map((name, index) => ({
+            index,
+            name,
+            description: this.getFieldDescription(credential.credentialType, name),
+        }));
     }
 
     /**
-     * Generate student status proof
+     * Get field description for display
      */
-    async generateStudentProof(
-        credentialId: string,
-        institutionHash: string,
-        isActive: boolean,
-        fieldsToReveal: number[]
-    ): Promise<GeneratedProof> {
-        const publicInputs = [
-            institutionHash,
-            isActive ? '1' : '0',
-        ];
-
-        const privateInputs = {
-            studentId: 'PRIVATE',
-            enrollmentDate: 'PRIVATE',
+    private getFieldDescription(credentialType: string, fieldName: string): string {
+        const descriptions: Record<string, Record<string, string>> = {
+            Education: {
+                institution: 'Name of educational institution',
+                studentId: 'Student identification number',
+                status: 'Current enrollment status',
+                gpa: 'Grade point average',
+                enrollmentDate: 'Date of enrollment',
+                graduationDate: 'Expected or actual graduation date',
+            },
+            Health: {
+                patientId: 'Patient identification number',
+                vaccinationType: 'Type of vaccination received',
+                vaccinationDate: 'Date of vaccination',
+                expiryDate: 'Vaccination expiry date',
+                provider: 'Healthcare provider name',
+                batchNumber: 'Vaccine batch number',
+            },
+            Employment: {
+                employeeId: 'Employee identification number',
+                employer: 'Employer organization name',
+                position: 'Job title or position',
+                startDate: 'Employment start date',
+                endDate: 'Employment end date (if applicable)',
+                salary: 'Salary information',
+            },
+            Age: {
+                birthYear: 'Year of birth',
+                birthMonth: 'Month of birth',
+                birthDay: 'Day of birth',
+                ageThreshold: 'Age threshold for verification',
+            },
+            Address: {
+                street: 'Street address',
+                city: 'City',
+                state: 'State or province',
+                zipCode: 'Postal code',
+                country: 'Country',
+            },
         };
 
-        return this.generateProof({
-            credentialId,
-            credentialType: 'Education',
-            fieldsToReveal,
-            proofType: 'StudentStatus' as ProofType,
-            publicInputs,
-            privateInputs,
-        });
+        const typeDescriptions = descriptions[credentialType];
+        return typeDescriptions?.[fieldName] || `${fieldName} field`;
     }
 
     /**
-     * Generate vaccination status proof
+     * Calculate estimated proof generation time
      */
-    async generateVaccinationProof(
-        credentialId: string,
-        vaccinationType: string,
-        isValid: boolean,
-        fieldsToReveal: number[]
-    ): Promise<GeneratedProof> {
-        const publicInputs = [
-            hashData(vaccinationType),
-            isValid ? '1' : '0',
-        ];
-
-        const privateInputs = {
-            patientId: 'PRIVATE',
-            vaccinationDate: 'PRIVATE',
-        };
-
-        return this.generateProof({
-            credentialId,
-            credentialType: 'Health',
-            fieldsToReveal,
-            proofType: 'VaccinationStatus' as ProofType,
-            publicInputs,
-            privateInputs,
-        });
+    estimateProofGenerationTime(fieldsCount: number): number {
+        // Base time + time per field (in milliseconds)
+        const baseTime = 500;
+        const timePerField = 100;
+        return baseTime + fieldsCount * timePerField;
     }
 }
 
-export const zkProofService = new ZKProofService();
+export const zkProofService = new ZkProofService();
