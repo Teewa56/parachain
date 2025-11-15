@@ -797,18 +797,6 @@ identity-parachain/
 │
 ├── .expo/                                # Expo cache (auto-generated)
 │
-├── assets/                               # Static assets
-│   ├── images/
-│   │   ├── logo.png
-│   │   ├── wallet-icon.png
-│   │   └── ...
-│   ├── fonts/
-│   │   ├── Roboto-Regular.ttf
-│   │   └── ...
-│   └── icons/
-│       ├── home.svg
-│       ├── wallet.svg
-│       └── ...
 │
 ├── app/                                  # Expo Router routing (app directory)
 │   ├── _layout.tsx                       # Root layout
@@ -1047,15 +1035,6 @@ identity-parachain/
 ├── tsconfig.json
 ├── babel.config.js
 └── .gitignore
-│
-├── docs/                         # Documentation
-│   ├── ARCHITECTURE.md
-│   ├── API_REFERENCE.md
-│   ├── SECURITY.md
-│   ├── DEPLOYMENT.md
-│   ├── USER_GUIDE.md
-│   └── DEVELOPER_GUIDE.md
-│
 ├── README.md                     # Main README
 ├── LICENSE
 └── .gitignore
