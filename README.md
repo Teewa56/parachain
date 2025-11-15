@@ -881,70 +881,172 @@ identity-parachain/
 │   │   │   ├── calls.ts                  # Extrinsic calls
 │   │   │   ├── queries.ts                # Storage queries
 │   │   │   ├── types.ts                  # Substrate types
-│   │   │   └── utils.ts                  # Helper utilities
+│   │   │   └── utils.ts             mobile/
+│
+├── app/                                  # Expo Router (screens)
+│   ├── _layout.tsx
+│   ├── +not-found.tsx
+│   │
+│   ├── (auth)/
+│   │   ├── _layout.tsx
+│   │   ├── login.tsx
+│   │   ├── register.tsx
+│   │   └── recovery.tsx
+│   │
+│   ├── (wallet)/
+│   │   ├── _layout.tsx
+│   │   ├── index.tsx                     # Dashboard
 │   │   │
+│   │   ├── identity/
+│   │   │   ├── _layout.tsx
+│   │   │   ├── index.tsx
+│   │   │   ├── [id].tsx
+│   │   │   └── create.tsx
+│   │   │
+│   │   ├── credentials/
+│   │   │   ├── _layout.tsx
+│   │   │   ├── index.tsx
+│   │   │   ├── [id].tsx
+│   │   │   ├── share.tsx
+│   │   │   └── qr.tsx
+│   │   │
+│   │   ├── proof/
+│   │   │   ├── _layout.tsx
+│   │   │   ├── index.tsx                 # Proof Generation
+│   │   │   ├── confirm.tsx
+│   │   │   └── history.tsx
+│   │   │
+│   │   └── settings/
+│   │       ├── _layout.tsx
+│   │       ├── index.tsx
+│   │       ├── biometric.tsx
+│   │       └── backup.tsx
+│   │
+│
+├── src/
+│   │
+│   ├── zk/                               # **ZK Prover Integration**
+│   │   ├── index.ts                      # Public export
+│   │   ├── prover.ts                     # JS wrapper for native module
+│   │   ├── types.ts                      # Proof types
+│   │   └── useProof.ts                   # React hook for invoking prover
+│   │
+│   ├── substrate/
+│   │   ├── api.ts                        # Polkadot.js API
+│   │   ├── calls.ts
+│   │   ├── queries.ts
+│   │   ├── types.ts
+│   │   └── utils.ts
+│   │
+│   ├── services/
 │   │   ├── crypto/
-│   │   │   ├── keyManagement.ts          # Key generation/storage
-│   │   │   ├── signature.ts              # Signing operations
-│   │   │   └── zk.ts                     # ZK proof generation
+│   │   │   ├── keyManagement.ts
+│   │   │   ├── signature.ts
+│   │   │   └── hashing.ts
 │   │   │
 │   │   ├── storage/
-│   │   │   ├── localStorage.ts           # AsyncStorage wrapper
-│   │   │   ├── secureStorage.ts          # Encrypted storage (SecureStore)
-│   │   │   └── biometric.ts              # Biometric auth
+│   │   │   ├── secureStorage.ts
+│   │   │   └── localStorage.ts
 │   │   │
 │   │   └── qr/
-│   │       ├── qrGenerator.ts            # Generate QR codes
-│   │       └── qrScanner.ts              # Scan QR codes
+│   │       ├── qrGenerator.ts
+│   │       └── qrScanner.ts
 │   │
-│   ├── store/                            # State management (Zustand/Redux)
-│   │   ├── authStore.ts                  # Auth state
-│   │   ├── identityStore.ts              # Identity state
-│   │   ├── credentialStore.ts            # Credential state
-│   │   ├── uiStore.ts                    # UI state
-│   │   └── index.ts                      # Store setup
+│   ├── store/
+│   │   ├── authStore.ts
+│   │   ├── identityStore.ts
+│   │   ├── credentialStore.ts
+│   │   ├── proofStore.ts
+│   │   └── uiStore.ts
 │   │
 │   ├── hooks/
 │   │   ├── useAuth.ts
-│   │   ├── useSubstrate.ts
 │   │   ├── useCredentials.ts
+│   │   ├── useSubstrate.ts
 │   │   ├── useBiometric.ts
-│   │   ├── useProof.ts
 │   │   └── useNavigation.ts
 │   │
-│   ├── types/
-│   │   ├── index.ts                      # Type exports
-│   │   ├── credential.ts                 # Credential types
-│   │   ├── identity.ts                   # Identity types
-│   │   ├── api.ts                        # API types
-│   │   └── substrate.ts                  # Substrate types
+│   ├── components/
+│   │   ├── common/
+│   │   │   ├── Button.tsx
+│   │   │   ├── Input.tsx
+│   │   │   ├── Card.tsx
+│   │   │   └── Loading.tsx
+│   │   │
+│   │   ├── proof/
+│   │   │   ├── FieldSelector.tsx
+│   │   │   ├── ProofPreview.tsx
+│   │   │   └── ResultCard.tsx
 │   │
 │   ├── utils/
-│   │   ├── formatting.ts                 # Format helpers
-│   │   ├── validation.ts                 # Form validation
-│   │   ├── substrate.ts                  # Substrate utilities
-│   │   ├── errors.ts                     # Error handling
-│   │   └── constants.ts                  # App constants
-│   │
-│   ├── styles/
-│   │   ├── colors.ts                     # Color palette
-│   │   ├── spacing.ts                    # Spacing tokens
-│   │   ├── typography.ts                 # Font styles
-│   │   └── theme.ts                      # Theme config
+│   │   ├── formatting.ts
+│   │   ├── validation.ts
+│   │   ├── errors.ts
+│   │   ├── constants.ts
+│   │   └── helpers.ts
 │   │
 │   └── config/
-│       ├── env.ts                        # Environment config
-│       └── substrate.ts                  # Substrate config
+│       ├── env.ts
+│       └── substrate.ts
 │
-├── __tests__/                            # Tests
-│   ├── components/
-│   │   └── Button.test.tsx
-│   ├── services/
-│   │   └── crypto.test.ts
-│   └── hooks/
-│       └── useAuth.test.ts
 │
-└── eas.json                              # EAS Build config
+├── rust-prover/                          # **Rust ZK Prover crate**
+│   ├── Cargo.toml
+│   ├── src/
+│   │   ├── lib.rs                        # Rust proving logic (arkworks/halo2)
+│   │   ├── ffi.rs                        # C ABI interface
+│   │   ├── circuits/                     # ZK circuits
+│   │   ├── proving/                      # Prover functions
+│   │   └── utils/                        # Field/math utils
+│   └── target/                           # Build artifacts (ignored in git)
+│
+├── android/
+│   ├── app/
+│   │   ├── src/main/
+│   │   │   ├── java/com/mobile/zk/
+│   │   │   │   ├── ZKProverModule.kt     # RN native module
+│   │   │   │   ├── ZKProverPackage.kt    # RN module binder
+│   │   │   │   └── ProverNative.kt       # JNI bridge to Rust
+│   │   │   │
+│   │   │   └── jniLibs/
+│   │   │       ├── arm64-v8a/libprover.so
+│   │   │       ├── armeabi-v7a/libprover.so
+│   │   │       └── x86_64/libprover.so
+│   │   │
+│   │   └── AndroidManifest.xml
+│   │
+│   ├── build.gradle
+│   ├── settings.gradle
+│   └── CMakeLists.txt                    # Optional if using CMake
+│
+├── ios/
+│   ├── ZKProverModule.swift              # RN module implemented in Swift
+│   ├── ProverBridge.swift                # Calls Rust C ABI
+│   ├── rust-prover.xcframework/          # Rust built for iOS + Simulators
+│   └── Podfile
+│
+├── modules/
+│   └── zk-prover-expo-plugin/            # **Expo Config Plugin**
+│       ├── app.plugin.js
+│       ├── withZKProver.js               # Adds libs, edits Podfile, Gradle, etc.
+│       └── README.md
+│
+├── scripts/
+│   ├── build-rust-android.sh             # cargo-ndk build automation
+│   ├── build-rust-ios.sh                 # xcframework builder
+│   ├── clean.sh
+│   └── verify-toolchains.sh
+│
+├── assets/
+│   ├── images/
+│   └── fonts/
+│
+├── app.json                              # Expo config
+├── package.json
+├── eas.json                              # EAS Build profiles
+├── tsconfig.json
+├── babel.config.js
+└── .gitignore
 │
 ├── docs/                         # Documentation
 │   ├── ARCHITECTURE.md
