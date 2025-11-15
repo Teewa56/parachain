@@ -15,7 +15,7 @@ import { Button } from '../../../src/components/common/Button';
 import { FieldSelector } from '../../../src/components/credential/FieldSelector';
 import { ProofPreview } from '../../../src/components/credential/ProofPreview';
 import type { Credential, ProofType } from '../../../src/types/substrate';
-import { formatDid } from '../../../src/services/substrate/utils';
+import { formatDid } from '../../../src/substrate/utils';
 
 interface SelectedFields {
     [key: number]: boolean;

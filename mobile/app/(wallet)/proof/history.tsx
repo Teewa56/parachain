@@ -11,7 +11,7 @@ import {
 import { router } from 'expo-router';
 import { useUIStore } from '../../../src/store';
 import { Card } from '../../../src/components/common/Card';
-import { formatTimestamp, formatRelativeTime } from '../../../src/services/substrate/utils';
+import { formatTimestamp, formatRelativeTime } from '../../../src/substrate/utils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from '../../../src/utils/constants';
 

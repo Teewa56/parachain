@@ -13,7 +13,7 @@ import { useCredentialStore } from '../../../src/store/credentialStore';
 import { useUIStore } from '../../../src/store/uiStore';
 import { Card } from '../../../src/components/common/Card';
 import type { Credential, CredentialType } from '../../../src/types/substrate';
-import { formatTimestamp, formatDid } from '../../../src/services/substrate/utils';
+import { formatTimestamp, formatDid } from '../../../src/substrate/utils';
 
 export default function CredentialsListScreen() {
     const [refreshing, setRefreshing] = useState(false);
