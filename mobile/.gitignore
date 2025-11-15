@@ -39,5 +39,7 @@ yarn-error.*
 app-example
 
 # generated native folders
-/ios
-/android
+
+ios/rust-prover.xcframework/
+android/app/src/main/jniLibs/
+rust-prover/target/
