@@ -39,4 +39,5 @@ polkadot_sdk::frame_benchmarking::define_benchmarks!(
 	[pallet_verifiable_credentials, VerifiableCredentials]
 	[pallet_credential_governance, CredentialGovernance]
 	[pallet_xcm_credentials, XcmCredentials]
+	[pallet_proof_of_personhood, ProofOfPersonhood]
 );

@@ -1,7 +1,7 @@
 # 🔐 PortableID
 
 A digital decentralised identity wallet for decentralized identity management with zero-knowledge proofs, verifiable credentials, on-chain governance, and cross-chain interoperability.
-
+ 
 ## 📋 Table of Contents
 
 - [Overview](#overview)
@@ -148,6 +148,13 @@ User Privacy: ✓ Protected (sensitive data not disclosed)
 - Biometric authentication support
 - Secure local key storage
 
+### 8. Proof of Personhood & Sybil Resistance
+- Biometric-derived nullifiers (never stores raw biometrics)
+- Zero-knowledge uniqueness proofs
+- 6-month time-locked recovery mechanism
+- Social recovery with guardian approvals
+- Registration cooldown periods
+
 ---
 
 ## Technology Stack
@@ -163,6 +170,12 @@ User Privacy: ✓ Protected (sensitive data not disclosed)
 - **Proof System**: Groth16 ZK-SNARKs
 - **Hashing**: Blake2-256
 - **Signatures**: Ed25519, Sr25519, ECDSA
+
+### Proof of Personhood
+- **Nullifier Generation**: Blake2-256 hashing
+- **Commitment Schemes**: Pedersen commitments
+- **Recovery Mechanism**: Time-locked with guardian approval
+- **Sybil Prevention**: Cooldown periods, cost barriers
 
 ### Frontend Stack
 - **Web**: React 18, TypeScript, Polkadot.js API
@@ -417,6 +430,56 @@ Proposer: Healthcare Organization
          └─ Verification passes (issuer is trusted)
 ```
 
+## Proof of Personhood Flow
+
+### Registration with Biometric Nullifier
+```
+CLIENT SIDE (Never Leaves Device)
+─────────────────────────────────
+1. User provides biometric (fingerprint/face)
+2. Extract template → biometric_data
+3. Generate: salt = random_bytes(32)
+4. Compute: nullifier = Hash(biometric_data)
+5. Compute: commitment = Hash(biometric_data || salt)
+6. Store salt encrypted in local secure storage
+
+PARACHAIN VERIFICATION
+──────────────────────
+1. Check nullifier NOT in PersonhoodRegistry
+2. Verify nullifier is unique (no duplicates)
+3. Store: PersonhoodRegistry[nullifier] = {
+     commitment,
+     registered_at: timestamp,
+     did: user_did
+   }
+4. Success: User registered as unique person
+```
+
+### Recovery After Device Loss
+```
+STEP 1: Request Recovery (User on New Device)
+──────────────────────────────────────────────
+- User captures NEW biometric on new device
+- Generate new_nullifier = Hash(new_biometric)
+- Nominate 3-5 guardians (trusted contacts)
+- Submit recovery request to chain
+- 6-month cooldown period starts
+
+STEP 2: Guardian Approval (During 6 Months)
+────────────────────────────────────────────
+- Guardians notified on-chain
+- Minimum 2/3 must approve recovery
+- Each guardian calls approve_recovery()
+
+STEP 3: Finalize Recovery (After 6 Months)
+──────────────────────────────────────────
+- User calls finalize_recovery()
+- Checks: cooldown elapsed + guardian approvals
+- Old nullifier deleted from registry
+- New nullifier registered
+- DID ownership transferred to new nullifier
+```
+
 ---
 
 ## Technical Flow
@@ -654,6 +717,12 @@ identity-parachain/
 │       │   ├── Cargo.toml
 │       │   └── src/
 │       │       └── lib.rs
+│       ├── pallet-proof-of-personhood/
+│       │   ├── Cargo.toml
+│       │   └── src/
+│       │       ├── lib.rs
+│       │       ├── benchmarking.rs
+│       │       └── weights.rs
 │       │
 │       ├── pallet-verifiable-credentials/
 │       │   ├── Cargo.toml
@@ -993,6 +1062,7 @@ identity-parachain/
 | `pallet-zk-credentials/src/lib.rs` | ZK proof verification pallet |
 | `pallet-credential-governance/src/lib.rs` | On-chain voting pallet |
 | `pallet-xcm-credentials/src/lib.rs` | Cross-chain credential pallet |
+| `pallet-proof-of-personhood/src/lib.rs` | Biometric nullifier registration & recovery |
 
 ### Web (Frontend for Issuers)
 
@@ -1205,3 +1275,29 @@ pub mod pallet {
 | `tsconfig.json` | TypeScript settings |
 | `tailwind.config.js` | CSS framework config |
 | `app.json` | Mobile/Expo configuration |
+
+### Proof of Personhood Security
+
+**Biometric Safety**:
+- Raw biometrics NEVER leave the device
+- Only nullifiers (hashes) stored on-chain
+- Biometric templates encrypted in device secure enclave
+- Zero-knowledge proofs prevent identity linkage
+
+**Sybil Attack Prevention**:
+1. **Uniqueness**: Nullifiers prevent duplicate registrations
+2. **Cost Barrier**: Registration deposits deter spam
+3. **Time Locks**: 6-month cooldown between registrations
+4. **Social Proof**: Guardian-based recovery requires trust networks
+
+**Recovery Security**:
+- 6-month delay prevents hasty account takeover
+- 2/3 guardian approval required
+- Active users can auto-cancel malicious recovery attempts
+- Dormancy threshold (12 months) enables legitimate recovery
+
+**Privacy Guarantees**:
+- No biometric data on-chain (only commitments/nullifiers)
+- ZK proofs reveal only "user is unique"
+- Nullifiers cannot be reverse-engineered to biometrics
+- Cross-DID unlinkability maintained

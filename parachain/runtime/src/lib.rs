@@ -323,6 +323,8 @@ mod runtime {
 	pub type CredentialGovernance = pallet_credential_governance;
 	#[runtime::pallet_index(56)]
 	pub type XcmCredentials = pallet_xcm_credentials;
+	#[runtime::pallet_index(57)]
+	pub type ProofOfPersonhood = pallet_proof_of_personhood;
 }
 
 #[docify::export(register_validate_block)]

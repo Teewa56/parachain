@@ -26,6 +26,7 @@ pallet-credential-governance = { workspace = true }
 pallet-identity-registry = { workspace = true }
 pallet-verifiable-credentials = { workspace = true }
 pallet-xcm-credentials = { workspace = true, default-features = false }
+pallet-proof-of-personhood = { workspace = true, default-features = false }
 xcm-builder = { workspace = true, default-features = false }
 xcm-executor = { workspace = true, default-features = false }
 pallet-xcm = { version = "23.0.0", default-features = false }
@@ -92,6 +93,7 @@ std = [
     "pallet-zk-credentials/std",
     "pallet-credential-governance/std",
     "pallet-xcm-credentials/std",
+    "pallet-proof-of-personhood/std",
     "xcm-builder/std",
     "xcm-executor/std",
     "pallet-xcm/std"
@@ -105,6 +107,7 @@ runtime-benchmarks = [
     "pallet-verifiable-credentials/runtime-benchmarks",
     "pallet-xcm-credentials/runtime-benchmarks",
     "pallet-zk-credentials/runtime-benchmarks",
+    "pallet-proof-of-personhood/runtime-benchmarks",
     "polkadot-sdk/runtime-benchmarks",
 	"frame-benchmarking/runtime-benchmarks",
     "frame-support/runtime-benchmarks",
@@ -136,6 +139,7 @@ try-runtime = [
     "pallet-zk-credentials/try-runtime",
     "pallet-credential-governance/try-runtime",
     "pallet-xcm-credentials/try-runtime",
+    "pallet-proof-of-personhood/try-benchmarks",
 ]
 
 metadata-hash = ["substrate-wasm-builder/metadata-hash"]

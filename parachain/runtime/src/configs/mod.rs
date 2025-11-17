@@ -374,3 +374,17 @@ impl pallet_xcm_credentials::Config for Runtime {
     type ParachainId = parachain_info::Pallet<Runtime>;
     type WeightInfo = pallet_xcm_credentials::weights::SubstrateWeight<Runtime>;
 }
+
+parameter_types! {
+    pub const RegistrationDeposit: Balance = 100 * UNIT;
+    pub const RecoveryDeposit: Balance = 50 * UNIT;
+}
+
+impl pallet_proof_of_personhood::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type Currency = Balances;
+    type TimeProvider = Timestamp;
+    type RegistrationDeposit = RegistrationDeposit;
+    type RecoveryDeposit = RecoveryDeposit;
+    type WeightInfo = pallet_proof_of_personhood::weights::SubstrateWeight<Runtime>;
+}

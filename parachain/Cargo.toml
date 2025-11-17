@@ -12,6 +12,7 @@ default-members = [
     "pallets/pallet-verifiable-credentials",
     "pallets/pallet-xcm-credentials",
     "pallets/pallet-zk-credentials",
+    "pallets/pallet-proof-of-personhood",
     "runtime"
 ]
 members = [
@@ -21,6 +22,7 @@ members = [
     "pallets/pallet-verifiable-credentials",
     "pallets/pallet-xcm-credentials",
     "pallets/pallet-zk-credentials",
+    "pallets/pallet-proof-of-personhood",
     "runtime",
 ]
 resolver = "2"
@@ -33,6 +35,7 @@ pallet-identity-registry = { path = "./pallets/pallet-identity-registry", defaul
 pallet-verifiable-credentials = { path = "./pallets/pallet-verifiable-credentials", default-features = false }
 pallet-xcm-credentials = { path = "./pallets/pallet-xcm-credentials", default-features = false }
 pallet-zk-credentials = { path = "./pallets/pallet-zk-credentials", default-features = false }
+pallet-proof-of-personhood = { path = "./pallets/pallet-proof-of-personhood", default-features = false }
 
 # FRAME and Substrate primitives
 frame-support = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.5", package = "frame-support", default-features = false }
