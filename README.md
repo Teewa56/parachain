@@ -34,7 +34,7 @@ A digital decentralised identity wallet for decentralized identity management wi
 - **Decentralized**: No central authority controls identities
 - **Interoperable**: Cross-chain credential verification via XCM
 - **Governed**: Democratic issuer approval through on-chain voting
-- **Production-Ready**: Enterprise-grade security and scalability
+- **Enterprise-grade security and scalability**:
 
 ---
 

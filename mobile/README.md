@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-A production-ready React Native mobile wallet built with Expo Router that enables users to:
+A  mobile wallet built with Expo Router that enables users to:
 - Create and manage self-sovereign decentralized identities (DIDs)
 - Store and share verifiable credentials privately
 - Generate zero-knowledge proofs for selective disclosure
