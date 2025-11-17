@@ -1,6 +1,8 @@
+import { generateProof as nativeGenerateProof } from '../../zk/prover';
+import { provingKeyManager } from './provingKeys';
 import type { Credential, ProofType, ZkProof } from '../../types/substrate';
-import { hexToU8a, u8aToHex } from '@polkadot/util';
-import { blake2AsU8a } from '@polkadot/util-crypto';
+import { blake2AsU8a, blake2AsHex } from '@polkadot/util-crypto';
+import { u8aToHex, hexToU8a } from '@polkadot/util';
 
 interface ProofGenerationParams {
     credential: Credential;
@@ -14,64 +16,258 @@ interface GeneratedProof {
 }
 
 class ZkProofService {
-    /**
-     * Generate a zero-knowledge proof for selective disclosure
-     */
     async generateProof(params: ProofGenerationParams): Promise<GeneratedProof> {
         const { credential, fieldsToReveal, proofType } = params;
 
         try {
-            // Generate nonce for replay attack prevention
+            // Get circuit ID
+            const circuitId = this.mapProofTypeToCircuit(proofType);
+            
+            // Load proving key
+            console.log(`Loading proving key for ${circuitId}...`);
+            const provingKeyB64 = await provingKeyManager.getProvingKey(circuitId);
+            
+            // Prepare inputs based on proof type
+            const { publicInputs, privateInputs } = await this.prepareInputs(
+                proofType,
+                credential,
+                fieldsToReveal
+            );
+            
+            // Generate nonce
             const nonce = this.generateNonce();
-
-            // Construct public inputs from revealed fields
-            const publicInputs = this.constructPublicInputs(
-                credential,
-                fieldsToReveal,
-                proofType
+            
+            console.log(`Generating ${circuitId} proof...`);
+            
+            // Call native prover
+            const request = {
+                circuit_id: circuitId,
+                public_inputs: publicInputs,
+                private_inputs: privateInputs,
+                proving_key_b64: provingKeyB64,
+            };
+            
+            const response = await nativeGenerateProof(request);
+            
+            if (!response.ok) {
+                throw new Error(response.error || 'Proof generation failed');
+            }
+            
+            console.log('✅ Proof generated successfully');
+            
+            // Parse response
+            const proofData = Uint8Array.from(
+                atob(response.proof_base64!),
+                c => c.charCodeAt(0)
             );
-
-            // Generate mock proof data (in production, this would call actual ZK circuit)
-            const proofData = await this.generateProofData(
-                credential,
-                fieldsToReveal,
-                publicInputs,
-                nonce
+            
+            const publicInputsBytes = response.public_inputs!.map(b64 =>
+                Uint8Array.from(atob(b64), c => c.charCodeAt(0))
             );
-
-            // Create the ZK proof structure
+            
             const proof: ZkProof = {
                 proofType,
                 proofData,
-                publicInputs,
+                publicInputs: publicInputsBytes,
                 credentialHash: credential.dataHash,
                 createdAt: Math.floor(Date.now() / 1000),
                 nonce,
             };
-
-            // Create revealed fields map for display
-            const revealedFields = this.extractRevealedFields(
-                credential,
-                fieldsToReveal
-            );
-
-            console.log('ZK proof generated successfully');
-            console.log('Proof type:', proofType);
-            console.log('Fields revealed:', fieldsToReveal.length);
-
-            return {
-                proof,
-                revealedFields,
-            };
+            
+            const revealedFields = this.extractRevealedFields(credential, fieldsToReveal);
+            
+            return { proof, revealedFields };
         } catch (error) {
-            console.error('ZK proof generation failed:', error);
+            console.error('Proof generation error:', error);
             throw error;
         }
     }
-
-    /**
-     * Generate a unique nonce for replay attack prevention
-     */
+    
+    private mapProofTypeToCircuit(proofType: ProofType): string {
+        const mapping: Record<ProofType, string> = {
+            AgeAbove: 'age_verification',
+            StudentStatus: 'student_status',
+            VaccinationStatus: 'vaccination_status',
+            EmploymentStatus: 'employment_status',
+            Custom: 'custom',
+        };
+        return mapping[proofType];
+    }
+    
+    private async prepareInputs(
+        proofType: ProofType,
+        credential: Credential,
+        fieldsToReveal: number[]
+    ): Promise<{ publicInputs: any; privateInputs: string }> {
+        switch (proofType) {
+            case 'AgeAbove':
+                return this.prepareAgeInputs(credential, fieldsToReveal);
+            case 'StudentStatus':
+                return this.prepareStudentInputs(credential, fieldsToReveal);
+            case 'VaccinationStatus':
+                return this.prepareVaccinationInputs(credential, fieldsToReveal);
+            case 'EmploymentStatus':
+                return this.prepareEmploymentInputs(credential, fieldsToReveal);
+            default:
+                throw new Error(`Unsupported proof type: ${proofType}`);
+        }
+    }
+    
+    private async prepareAgeInputs(
+        credential: Credential,
+        fieldsToReveal: number[]
+    ): Promise<{ publicInputs: any; privateInputs: string }> {
+        const currentTimestamp = Math.floor(Date.now() / 1000);
+        const ageThreshold = 18; // 18 years
+        
+        // Hash credential type
+        const credentialTypeHash = blake2AsU8a(credential.credentialType, 256);
+        const credentialTypeHashB64 = btoa(String.fromCharCode(...credentialTypeHash));
+        
+        const publicInputs = {
+            current_timestamp: currentTimestamp,
+            age_threshold_years: ageThreshold,
+            credential_type_hash_b64: credentialTypeHashB64,
+        };
+        
+        // Parse private data from credential
+        // In production, this would decrypt credential.dataHash
+        const birthTimestamp = currentTimestamp - (25 * 365 * 24 * 3600); // Mock: 25 years old
+        const credentialHash = hexToU8a(credential.dataHash);
+        const issuerSignatureHash = hexToU8a(credential.signature);
+        
+        const privateInputs = JSON.stringify({
+            birth_timestamp: birthTimestamp,
+            credential_hash_b64: btoa(String.fromCharCode(...credentialHash)),
+            issuer_signature_hash_b64: btoa(String.fromCharCode(...issuerSignatureHash)),
+        });
+        
+        return { publicInputs, privateInputs };
+    }
+    
+    private async prepareStudentInputs(
+        credential: Credential,
+        fieldsToReveal: number[]
+    ): Promise<{ publicInputs: any; privateInputs: string }> {
+        const currentTimestamp = Math.floor(Date.now() / 1000);
+        
+        // Mock institution hash (in production, parse from credential)
+        const institutionName = "MIT";
+        const institutionHash = blake2AsU8a(institutionName, 256);
+        const institutionHashB64 = btoa(String.fromCharCode(...institutionHash));
+        
+        const statusActive = credential.status === 'Active';
+        
+        const publicInputs = {
+            current_timestamp: currentTimestamp,
+            institution_hash_b64: institutionHashB64,
+            status_active: statusActive,
+        };
+        
+        // Mock private inputs (parse from credential in production)
+        const studentIdHash = blake2AsU8a("STUDENT123", 256);
+        const enrollmentDate = currentTimestamp - (2 * 365 * 24 * 3600); // 2 years ago
+        const expiryDate = currentTimestamp + (2 * 365 * 24 * 3600); // 2 years future
+        const gpa = 350; // 3.5 GPA (stored as 350)
+        const credentialHash = hexToU8a(credential.dataHash);
+        const issuerSignatureHash = hexToU8a(credential.signature);
+        
+        const privateInputs = JSON.stringify({
+            student_id_hash_b64: btoa(String.fromCharCode(...studentIdHash)),
+            enrollment_date: enrollmentDate,
+            expiry_date: expiryDate,
+            gpa: gpa,
+            credential_hash_b64: btoa(String.fromCharCode(...credentialHash)),
+            issuer_signature_hash_b64: btoa(String.fromCharCode(...issuerSignatureHash)),
+        });
+        
+        return { publicInputs, privateInputs };
+    }
+    
+    private async prepareVaccinationInputs(
+        credential: Credential,
+        fieldsToReveal: number[]
+    ): Promise<{ publicInputs: any; privateInputs: string }> {
+        const currentTimestamp = Math.floor(Date.now() / 1000);
+        
+        // Mock vaccination type hash
+        const vaccinationType = "COVID-19";
+        const vaccinationTypeHash = blake2AsU8a(vaccinationType, 256);
+        const vaccinationTypeHashB64 = btoa(String.fromCharCode(...vaccinationTypeHash));
+        
+        const minDosesRequired = 2;
+        
+        const publicInputs = {
+            current_timestamp: currentTimestamp,
+            vaccination_type_hash_b64: vaccinationTypeHashB64,
+            min_doses_required: minDosesRequired,
+        };
+        
+        // Mock private inputs
+        const patientIdHash = blake2AsU8a("PATIENT456", 256);
+        const vaccinationDate = currentTimestamp - (180 * 24 * 3600); // 6 months ago
+        const expiryDate = credential.expiresAt;
+        const dosesReceived = 2;
+        const batchNumberHash = blake2AsU8a("BATCH789", 256);
+        const credentialHash = hexToU8a(credential.dataHash);
+        const issuerSignatureHash = hexToU8a(credential.signature);
+        
+        const privateInputs = JSON.stringify({
+            patient_id_hash_b64: btoa(String.fromCharCode(...patientIdHash)),
+            vaccination_date: vaccinationDate,
+            expiry_date: expiryDate,
+            doses_received: dosesReceived,
+            batch_number_hash_b64: btoa(String.fromCharCode(...batchNumberHash)),
+            credential_hash_b64: btoa(String.fromCharCode(...credentialHash)),
+            issuer_signature_hash_b64: btoa(String.fromCharCode(...issuerSignatureHash)),
+        });
+        
+        return { publicInputs, privateInputs };
+    }
+    
+    private async prepareEmploymentInputs(
+        credential: Credential,
+        fieldsToReveal: number[]
+    ): Promise<{ publicInputs: any; privateInputs: string }> {
+        const currentTimestamp = Math.floor(Date.now() / 1000);
+        
+        // Mock company hash
+        const companyName = "Tech Corp";
+        const companyHash = blake2AsU8a(companyName, 256);
+        const companyHashB64 = btoa(String.fromCharCode(...companyHash));
+        
+        const employmentType = "Full-time";
+        const employmentTypeHash = blake2AsU8a(employmentType, 256);
+        const employmentTypeHashB64 = btoa(String.fromCharCode(...employmentTypeHash));
+        
+        const publicInputs = {
+            current_timestamp: currentTimestamp,
+            company_hash_b64: companyHashB64,
+            employment_type_hash_b64: employmentTypeHashB64,
+        };
+        
+        // Mock private inputs
+        const employeeIdHash = blake2AsU8a("EMP001", 256);
+        const startDate = currentTimestamp - (3 * 365 * 24 * 3600); // 3 years ago
+        const endDate = 0; // Still employed
+        const salary = 7500000; // $75,000 in cents
+        const positionHash = blake2AsU8a("Software Engineer", 256);
+        const credentialHash = hexToU8a(credential.dataHash);
+        const issuerSignatureHash = hexToU8a(credential.signature);
+        
+        const privateInputs = JSON.stringify({
+            employee_id_hash_b64: btoa(String.fromCharCode(...employeeIdHash)),
+            start_date: startDate,
+            end_date: endDate,
+            salary: salary,
+            position_hash_b64: btoa(String.fromCharCode(...positionHash)),
+            credential_hash_b64: btoa(String.fromCharCode(...credentialHash)),
+            issuer_signature_hash_b64: btoa(String.fromCharCode(...issuerSignatureHash)),
+        });
+        
+        return { publicInputs, privateInputs };
+    }
+    
     private generateNonce(): string {
         const timestamp = Date.now();
         const random = Math.random();
@@ -79,106 +275,14 @@ class ZkProofService {
             ...new Uint8Array(new Float64Array([timestamp]).buffer),
             ...new Uint8Array(new Float64Array([random]).buffer),
         ]);
-        
-        const hash = blake2AsU8a(data, 256);
-        return u8aToHex(hash);
+        return u8aToHex(blake2AsU8a(data, 256));
     }
-
-    /**
-     * Construct public inputs for the ZK proof
-     */
-    private constructPublicInputs(
-        credential: Credential,
-        fieldsToReveal: number[],
-        proofType: ProofType
-    ): Uint8Array[] {
-        const inputs: Uint8Array[] = [];
-
-        // Add credential hash
-        inputs.push(hexToU8a(credential.dataHash));
-
-        // Add fields bitmap (which fields are revealed)
-        const bitmap = this.createFieldsBitmap(fieldsToReveal);
-        inputs.push(bitmap);
-
-        // Add issuer DID
-        inputs.push(hexToU8a(credential.issuer));
-
-        // Add proof type hash
-        const typeHash = blake2AsU8a(proofType, 256);
-        inputs.push(typeHash);
-
-        // Add timestamp
-        const timestamp = Math.floor(Date.now() / 1000);
-        const timestampBytes = new Uint8Array(32);
-        new DataView(timestampBytes.buffer).setBigUint64(24, BigInt(timestamp), false);
-        inputs.push(timestampBytes);
-
-        return inputs;
-    }
-
-    /**
-     * Create a bitmap representing which fields are revealed
-     */
-    private createFieldsBitmap(fieldsToReveal: number[]): Uint8Array {
-        let bitmap = 0n;
-
-        for (const fieldIndex of fieldsToReveal) {
-            if (fieldIndex >= 64) {
-                throw new Error('Field index too large (max 63)');
-            }
-            bitmap |= 1n << BigInt(fieldIndex);
-        }
-
-        const bytes = new Uint8Array(8);
-        new DataView(bytes.buffer).setBigUint64(0, bitmap, true);
-        return bytes;
-    }
-
-    /**
-     * Generate proof data (mock implementation)
-     * In production, this would call the actual Groth16 proving algorithm
-     */
-    private async generateProofData(
-        credential: Credential,
-        fieldsToReveal: number[],
-        publicInputs: Uint8Array[],
-        nonce: string
-    ): Promise<Uint8Array> {
-        // Combine all data for proof generation
-        const dataToHash = new Uint8Array([
-            ...hexToU8a(credential.dataHash),
-            ...hexToU8a(credential.issuer),
-            ...hexToU8a(credential.subject),
-            ...new Uint8Array(fieldsToReveal),
-            ...publicInputs.flat(),
-            ...hexToU8a(nonce),
-        ]);
-
-        // Generate deterministic proof data
-        // NOTE: In production, this would be replaced with actual Groth16 proof generation
-        const proofHash = blake2AsU8a(dataToHash, 256);
-        
-        // Extend to 256 bytes (typical Groth16 proof size)
-        const proofData = new Uint8Array(256);
-        for (let i = 0; i < 256; i++) {
-            proofData[i] = proofHash[i % 32] ^ (i % 256);
-        }
-
-        return proofData;
-    }
-
-    /**
-     * Extract revealed field values for display
-     */
+    
     private extractRevealedFields(
         credential: Credential,
         fieldsToReveal: number[]
     ): Map<number, any> {
         const revealedFields = new Map<number, any>();
-
-        // Mock field data extraction
-        // In production, this would decrypt and parse the actual credential data
         const fieldNames = this.getFieldNamesForType(credential.credentialType);
 
         fieldsToReveal.forEach((index) => {
@@ -192,10 +296,7 @@ class ZkProofService {
 
         return revealedFields;
     }
-
-    /**
-     * Get field names for a credential type
-     */
+    
     private getFieldNamesForType(credentialType: string): string[] {
         const fieldMappings: Record<string, string[]> = {
             Education: [
@@ -246,10 +347,7 @@ class ZkProofService {
 
         return fieldMappings[credentialType] || fieldMappings.Custom;
     }
-
-    /**
-     * Validate proof parameters before generation
-     */
+    
     validateProofParams(params: ProofGenerationParams): {
         valid: boolean;
         error?: string;
@@ -268,18 +366,6 @@ class ZkProofService {
             return { valid: false, error: 'Too many fields selected (max 50)' };
         }
 
-        const fieldNames = this.getFieldNamesForType(credential.credentialType);
-        const invalidFields = fieldsToReveal.filter(
-            (index) => index < 0 || index >= fieldNames.length
-        );
-
-        if (invalidFields.length > 0) {
-            return {
-                valid: false,
-                error: `Invalid field indices: ${invalidFields.join(', ')}`,
-            };
-        }
-
         if (credential.status !== 'Active') {
             return {
                 valid: false,
@@ -287,7 +373,6 @@ class ZkProofService {
             };
         }
 
-        // Check expiration
         if (credential.expiresAt > 0) {
             const now = Math.floor(Date.now() / 1000);
             if (now > credential.expiresAt) {
@@ -297,80 +382,11 @@ class ZkProofService {
 
         return { valid: true };
     }
-
-    /**
-     * Get available fields for a credential
-     */
-    getAvailableFields(credential: Credential): Array<{
-        index: number;
-        name: string;
-        description: string;
-    }> {
-        const fieldNames = this.getFieldNamesForType(credential.credentialType);
-
-        return fieldNames.map((name, index) => ({
-            index,
-            name,
-            description: this.getFieldDescription(credential.credentialType, name),
-        }));
-    }
-
-    /**
-     * Get field description for display
-     */
-    private getFieldDescription(credentialType: string, fieldName: string): string {
-        const descriptions: Record<string, Record<string, string>> = {
-            Education: {
-                institution: 'Name of educational institution',
-                studentId: 'Student identification number',
-                status: 'Current enrollment status',
-                gpa: 'Grade point average',
-                enrollmentDate: 'Date of enrollment',
-                graduationDate: 'Expected or actual graduation date',
-            },
-            Health: {
-                patientId: 'Patient identification number',
-                vaccinationType: 'Type of vaccination received',
-                vaccinationDate: 'Date of vaccination',
-                expiryDate: 'Vaccination expiry date',
-                provider: 'Healthcare provider name',
-                batchNumber: 'Vaccine batch number',
-            },
-            Employment: {
-                employeeId: 'Employee identification number',
-                employer: 'Employer organization name',
-                position: 'Job title or position',
-                startDate: 'Employment start date',
-                endDate: 'Employment end date (if applicable)',
-                salary: 'Salary information',
-            },
-            Age: {
-                birthYear: 'Year of birth',
-                birthMonth: 'Month of birth',
-                birthDay: 'Day of birth',
-                ageThreshold: 'Age threshold for verification',
-            },
-            Address: {
-                street: 'Street address',
-                city: 'City',
-                state: 'State or province',
-                zipCode: 'Postal code',
-                country: 'Country',
-            },
-        };
-
-        const typeDescriptions = descriptions[credentialType];
-        return typeDescriptions?.[fieldName] || `${fieldName} field`;
-    }
-
-    /**
-     * Calculate estimated proof generation time
-     */
+    
     estimateProofGenerationTime(fieldsCount: number): number {
-        // Base time + time per field (in milliseconds)
-        const baseTime = 500;
-        const timePerField = 100;
-        return baseTime + fieldsCount * timePerField;
+        // Real ZK proof generation is more complex
+        // Groth16 typically takes 2-5 seconds on mobile
+        return 3000; // 3 seconds baseline
     }
 }
 

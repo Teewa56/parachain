@@ -1,18 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
-CRATE_PATH="$(cd "$(dirname "$0")/../.." && pwd)/rust-prover"
-cd "$CRATE_PATH"
 
-# Build for device + simulator
-rustup target add aarch64-apple-ios x86_64-apple-ios aarch64-apple-ios-sim || true
+cd "$(dirname "$0")/../rust-prover"
 
+# Install targets
+rustup target add aarch64-apple-ios x86_64-apple-ios aarch64-apple-ios-sim
+
+# Build
 cargo build --target aarch64-apple-ios --release
 cargo build --target x86_64-apple-ios --release
+cargo build --target aarch64-apple-ios-sim --release
 
-# Create xcframework (simplified; use cargo-lipo/cbindgen for production)
-mkdir -p ../ios/rust-prover.xcframework/ios-arm64
-cp target/aarch64-apple-ios/release/libprover.a ../ios/rust-prover.xcframework/ios-arm64/libprover.a || true
-mkdir -p ../ios/rust-prover.xcframework/ios-x86_64-simulator
-cp target/x86_64-apple-ios/release/libprover.a ../ios/rust-prover.xcframework/ios-x86_64-simulator/libprover.a || true
+# Create xcframework
+xcodebuild -create-xcframework \
+  -library target/aarch64-apple-ios/release/libprover.a \
+  -library target/x86_64-apple-ios/release/libprover.a \
+  -library target/aarch64-apple-ios-sim/release/libprover.a \
+  -output ../ios/rust-prover.xcframework
 
-echo "Created ios/rust-prover.xcframework (manual step may be required to make a proper xcframework)"
+echo "✅ iOS xcframework created"

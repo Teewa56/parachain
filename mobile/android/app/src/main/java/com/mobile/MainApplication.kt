@@ -16,6 +16,8 @@ import com.facebook.react.defaults.DefaultReactNativeHost
 import expo.modules.ApplicationLifecycleDispatcher
 import expo.modules.ReactNativeHostWrapper
 
+import com.mobile.zk.ZKProverPackage
+
 class MainApplication : Application(), ReactApplication {
 
   override val reactNativeHost: ReactNativeHost = ReactNativeHostWrapper(
@@ -52,5 +54,13 @@ class MainApplication : Application(), ReactApplication {
   override fun onConfigurationChanged(newConfig: Configuration) {
     super.onConfigurationChanged(newConfig)
     ApplicationLifecycleDispatcher.onConfigurationChanged(this, newConfig)
+  }
+
+  class MainApplication : Application(), ReactApplication {
+    override fun getPackages(): List<ReactPackage> {
+      return PackageList(this).packages.apply {
+        add(ZKProverPackage())
+      }
+    }
   }
 }
