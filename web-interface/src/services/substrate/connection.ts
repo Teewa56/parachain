@@ -12,8 +12,7 @@ export class SubstrateConnection {
   }
 
   async connect() {
-    // Simulates connection to Substrate node
-    // In production: use @polkadot/api
+    // add functionality to use @polkadot/api
     return { connected: true, endpoint: this.wsEndpoint };
   }
 

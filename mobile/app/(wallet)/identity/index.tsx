@@ -35,7 +35,7 @@ export default function IdentityIndexScreen() {
 
     const handleCopyDID = async () => {
         if (!did) return;
-        // In production, implement clipboard copy
+        // add clipboard functionality here
         showToast('DID copied to clipboard', 'success');
     };
 

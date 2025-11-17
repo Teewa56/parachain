@@ -60,7 +60,7 @@ export function AdminLogin() {
         // Sign the challenge
         const signature = await signMessage(challenge);
         
-        // In production, verify signature on-chain or via backend
+        // add functionality to verify the signature on-chain
         console.log('Admin authentication signature:', signature);
         
         // Store admin session

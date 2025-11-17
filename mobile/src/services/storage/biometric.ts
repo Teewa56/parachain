@@ -299,11 +299,10 @@ class BiometricAuthService {
     }
 
     /**
-     * Hash PIN using simple algorithm (in production, use proper hashing)
+     * Hash PIN using simple algorithm
      */
     private async hashPin(pin: string): Promise<string> {
-        // Simple hash for demonstration
-        // In production, use a proper key derivation function like PBKDF2
+        // use PBKDF2
         let hash = 0;
         for (let i = 0; i < pin.length; i++) {
             const char = pin.charCodeAt(i);

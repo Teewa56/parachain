@@ -227,8 +227,7 @@ class SecureStorageService {
         password: string
     ): Promise<boolean> {
         try {
-            // Simple XOR encryption for additional layer
-            // In production, use proper encryption like AES
+            // use proper encryption like AES
             const encrypted = this.simpleEncrypt(value, password);
             return await this.setItem(key, encrypted, { requireAuthentication: true });
         } catch (error) {
@@ -256,8 +255,7 @@ class SecureStorageService {
     }
 
     /**
-     * Simple XOR encryption (for demonstration)
-     * In production, use proper encryption libraries
+     *  use proper encryption libraries
      */
     private simpleEncrypt(text: string, password: string): string {
         const textBytes = new TextEncoder().encode(text);

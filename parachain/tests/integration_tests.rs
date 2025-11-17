@@ -254,9 +254,7 @@ fn test_zk_proof_verification() {
             created_at: 1234567890,
         };
         
-        // In production, this would actually verify the proof
-        // For testing, we mock the verification
-        
+        // add functionality to actually verify the proof
         // Create proof schema
         let field_descriptions = vec![
             b"age_threshold".to_vec(),

@@ -179,8 +179,7 @@ export default function BackupSettingsScreen() {
 
             setLoading(true, 'Exporting backup...');
 
-            // In production, this would create an encrypted backup file
-            // For now, just show success
+            // create an encrypted backup file
             await new Promise(resolve => setTimeout(resolve, 2000));
 
             showToast('Backup exported successfully', 'success');

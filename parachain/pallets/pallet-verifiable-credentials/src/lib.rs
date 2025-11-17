@@ -480,7 +480,7 @@ pub mod pallet {
             Ok(())
         }
 
-        /// Selective disclosure with production-ready ZK proof verification
+        /// Selective disclosure with  ZK proof verification
         #[pallet::call_index(6)]
         #[pallet::weight(T::WeightInfo::selective_disclosure())]
         pub fn selective_disclosure(
@@ -524,7 +524,7 @@ pub mod pallet {
                 Error::<T>::ProofAlreadyUsed
             );
             
-            // Production-ready ZK proof verification
+            //  ZK proof verification
             let proof_valid = Self::verify_selective_disclosure_proof(
                 &credential_id,
                 &fields_to_reveal,
@@ -604,7 +604,7 @@ pub mod pallet {
     }
 
     impl<T: Config> Pallet<T> {
-        /// Production-ready ZK proof verification for selective disclosure
+        ///  ZK proof verification for selective disclosure
         fn verify_selective_disclosure_proof(
             credential_id: &H256,
             fields_to_reveal: &[u32],

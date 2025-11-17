@@ -131,7 +131,7 @@ class ZkProofService {
         };
         
         // Parse private data from credential
-        // In production, this would decrypt credential.dataHash
+        // add functionality to decrypt credential.dataHash
         const birthTimestamp = currentTimestamp - (25 * 365 * 24 * 3600); // Mock: 25 years old
         const credentialHash = hexToU8a(credential.dataHash);
         const issuerSignatureHash = hexToU8a(credential.signature);
@@ -151,7 +151,7 @@ class ZkProofService {
     ): Promise<{ publicInputs: any; privateInputs: string }> {
         const currentTimestamp = Math.floor(Date.now() / 1000);
         
-        // Mock institution hash (in production, parse from credential)
+        // add functionallity to parse from credential
         const institutionName = "MIT";
         const institutionHash = blake2AsU8a(institutionName, 256);
         const institutionHashB64 = btoa(String.fromCharCode(...institutionHash));
@@ -164,7 +164,7 @@ class ZkProofService {
             status_active: statusActive,
         };
         
-        // Mock private inputs (parse from credential in production)
+        // add functionaity to parse from credentials
         const studentIdHash = blake2AsU8a("STUDENT123", 256);
         const enrollmentDate = currentTimestamp - (2 * 365 * 24 * 3600); // 2 years ago
         const expiryDate = currentTimestamp + (2 * 365 * 24 * 3600); // 2 years future
