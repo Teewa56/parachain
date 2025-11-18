@@ -8,11 +8,18 @@ mod benchmarking;
 pub mod weights;
 use weights::WeightInfo;
 
+#[cfg(feature = "std")]
 use ark_serialize::CanonicalDeserialize;
+#[cfg(feature = "std")]
 use ark_ff::PrimeField;
+#[cfg(feature = "std")]
 use ark_groth16::{Proof, VerifyingKey, prepare_verifying_key};
+#[cfg(feature = "std")]
 use ark_ec::pairing::Pairing;
+#[cfg(feature = "std")]
 use ark_bn254::{Bn254};
+
+#[cfg(feature = "std")]
 type Fr = <Bn254 as Pairing>::ScalarField;
 
 const MAX_PROOF_AGE_SECS: u64 = 3600; // 1 hour in seconds
@@ -26,7 +33,7 @@ pub mod pallet {
     use sp_core::H256;
     use sp_runtime::traits::SaturatedConversion;
     use frame_support::BoundedVec;
-    use parity_scale_codec::{WrapperTypeEncode, WrapperTypeDecode};
+    use parity_scale_codec::wrapper::{WrapperTypeEncode, WrapperTypeDecode};
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
