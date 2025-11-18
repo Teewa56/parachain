@@ -1,4 +1,5 @@
 use frame_support::weights::Weight;
+use sp_core::Get;
 
 pub trait WeightInfo {
     fn register_verification_key() -> Weight;

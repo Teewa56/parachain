@@ -139,7 +139,7 @@ try-runtime = [
     "pallet-zk-credentials/try-runtime",
     "pallet-credential-governance/try-runtime",
     "pallet-xcm-credentials/try-runtime",
-    "pallet-proof-of-personhood/try-benchmarks",
+    "pallet-proof-of-personhood/try-runtime",
 ]
 
 metadata-hash = ["substrate-wasm-builder/metadata-hash"]

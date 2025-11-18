@@ -1,9 +1,9 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-pub use pallet::*;
-
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
+
+pub mod weights;
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -14,14 +14,16 @@ pub mod pallet {
     use frame_system::pallet_prelude::*;
     use sp_std::vec::Vec;
     use sp_core::H256;
+    use crate::weights::WeightInfo;
+    use frame_support::BoundedVec;
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
-        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
-        type TimeProvider: Time;
+        type TimeProvider: Time<Moment=u64>;
+        type WeightInfo: WeightInfo; // reference trait directly
     }
 
     /// Identity information for a DID
@@ -41,16 +43,12 @@ pub mod pallet {
     }
 
     /// DID Document structure
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     pub struct DidDocument {
-        /// DID identifier
-        pub did: Vec<u8>,
-        /// Public keys associated with the DID
-        pub public_keys: Vec<H256>,
-        /// Authentication methods
-        pub authentication: Vec<H256>,
-        /// Service endpoints
-        pub services: Vec<Vec<u8>>,
+        pub did: BoundedVec<u8, ConstU32<64>>, // max length 64 bytes
+        pub public_keys: BoundedVec<H256, ConstU32<16>>, // max 16 keys
+        pub authentication: BoundedVec<H256, ConstU32<16>>,
+        pub services: BoundedVec<BoundedVec<u8, ConstU32<128>>, ConstU32<8>>, // up to 8 services, each max 128 bytes
     }
 
     /// Storage: Maps DID hash to Identity
@@ -111,13 +109,17 @@ pub mod pallet {
         DidDocumentNotFound,
         InvalidDidFormat,
         InvalidPublicKey,
+        DidTooLong,
+        TooManyKeys,
+        ServiceTooLong,
+        TooManyServices,
     }
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         /// Create a new identity
         #[pallet::call_index(0)]
-       #[pallet::weight(T::WeightInfo::create_identity())]
+        #[pallet::weight(T::WeightInfo::create_identity())]
         pub fn create_identity(
             origin: OriginFor<T>,
             did: Vec<u8>,
@@ -147,7 +149,7 @@ pub mod pallet {
                 Error::<T>::IdentityAlreadyExists
             );
 
-            let now = T::TimeProvider::now().as_secs();
+            let now: u64 = T::TimeProvider::now() / 1000;
 
             let identity = Identity {
                 controller: who.clone(),
@@ -158,10 +160,10 @@ pub mod pallet {
             };
 
             let did_document = DidDocument {
-                did: did.clone(),
-                public_keys: sp_std::vec![public_key],
-                authentication: sp_std::vec![public_key],
-                services: sp_std::vec![],
+                did: did.clone().try_into().map_err(|_| Error::<T>::DidTooLong)?,
+                public_keys: sp_std::vec![public_key].try_into().map_err(|_| Error::<T>::TooManyKeys)?,
+                authentication: sp_std::vec![public_key].try_into().map_err(|_| Error::<T>::TooManyKeys)?,
+                services: BoundedVec::default(), // Empty BoundedVec
             };
 
             Identities::<T>::insert(&did_hash, identity);
@@ -175,7 +177,7 @@ pub mod pallet {
 
         /// Update identity public key
         #[pallet::call_index(1)]
-       #[pallet::weight(T::WeightInfo::update_identity())]
+        #[pallet::weight(T::WeightInfo::update_identity())]
         pub fn update_identity(
             origin: OriginFor<T>,
             new_public_key: H256,
@@ -192,7 +194,7 @@ pub mod pallet {
                 ensure!(identity.active, Error::<T>::IdentityInactive);
 
                 identity.public_key = new_public_key;
-                identity.updated_at = T::TimeProvider::now().as_secs();
+                identity.updated_at = T::TimeProvider::now() / 1000;
 
                 Self::deposit_event(Event::IdentityUpdated { did_hash, controller: who });
 
@@ -215,7 +217,7 @@ pub mod pallet {
                 ensure!(identity.controller == who, Error::<T>::NotController);
 
                 identity.active = false;
-                identity.updated_at = T::TimeProvider::now().as_secs();
+                identity.updated_at = T::TimeProvider::now() / 1000;
 
                 Self::deposit_event(Event::IdentityDeactivated { did_hash });
 
@@ -238,7 +240,7 @@ pub mod pallet {
                 ensure!(identity.controller == who, Error::<T>::NotController);
 
                 identity.active = true;
-                identity.updated_at = T::TimeProvider::now().as_secs();
+                identity.updated_at = T::TimeProvider::now() / 1000;
 
                 Self::deposit_event(Event::IdentityReactivated { did_hash });
 
@@ -269,9 +271,13 @@ pub mod pallet {
             DidDocuments::<T>::try_mutate(&did_hash, |doc_opt| -> DispatchResult {
                 let doc = doc_opt.as_mut().ok_or(Error::<T>::DidDocumentNotFound)?;
 
-                doc.public_keys = public_keys;
-                doc.authentication = authentication;
-                doc.services = services;
+                doc.public_keys = public_keys.try_into().map_err(|_| Error::<T>::TooManyKeys)?;
+                doc.authentication = authentication.try_into().map_err(|_| Error::<T>::TooManyKeys)?;
+                doc.services = services.into_iter()
+                    .map(|s| s.try_into().map_err(|_| Error::<T>::ServiceTooLong))
+                    .collect::<Result<Vec<_>, _>>()?
+                    .try_into()
+                    .map_err(|_| Error::<T>::TooManyServices)?;
 
                 Self::deposit_event(Event::DidDocumentUpdated { did_hash });
 

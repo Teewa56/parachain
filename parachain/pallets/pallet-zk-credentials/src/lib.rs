@@ -10,8 +10,10 @@ use weights::WeightInfo;
 
 use ark_serialize::CanonicalDeserialize;
 use ark_ff::PrimeField;
-use ark_bn254::{Bn254, Fr};
 use ark_groth16::{Proof, VerifyingKey, prepare_verifying_key};
+use ark_ec::pairing::Pairing;
+use ark_bn254::{Bn254, Config as Bn254Config};
+type Fr = <Bn254 as Pairing>::ScalarField;
 
 const MAX_PROOF_AGE_SECS: u64 = 3600; // 1 hour in seconds
 
@@ -22,18 +24,19 @@ pub mod pallet {
     use frame_system::pallet_prelude::*;
     use sp_std::vec::Vec;
     use sp_core::H256;
+    use sp_runtime::traits::SaturatedConversion;
+    use frame_support::BoundedVec;
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
-        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         type WeightInfo: WeightInfo;
     }
 
     /// Proof types supported
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen, Copy)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     pub enum ProofType {
         /// Prove age is above threshold without revealing exact age
         AgeAbove,
@@ -57,24 +60,21 @@ pub mod pallet {
     }
 
     /// ZK Proof structure
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     pub struct ZkProof {
         pub proof_type: ProofType,
-        pub proof_data: Vec<u8>,
-        pub public_inputs: Vec<Vec<u8>>,
+        pub proof_data: BoundedVec<u8, ConstU32<2048>>,
+        pub public_inputs: BoundedVec<BoundedVec<u8, ConstU32<64>>, ConstU32<16>>,
         pub credential_hash: H256,
         pub created_at: u64,
         pub nonce: H256, // to prevent replay attacks
     }
 
     /// Verification key for a proof circuit
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     pub struct CircuitVerifyingKey {
-        /// Proof type this key is for
         pub proof_type: ProofType,
-        /// Serialized verification key
-        pub vk_data: Vec<u8>,
-        /// Who registered this key
+        pub vk_data: BoundedVec<u8, ConstU32<4096>>,
         pub registered_by: H256,
     }
 
@@ -107,7 +107,7 @@ pub mod pallet {
         _,
         Blake2_128Concat,
         ProofType,
-        Vec<Vec<u8>>, // field descriptions
+        BoundedVec<BoundedVec<u8, ConstU32<128>>, ConstU32<32>>, // field descriptions
         OptionQuery,
     >;
 
@@ -161,7 +161,7 @@ pub mod pallet {
 
             let circuit_vk = CircuitVerifyingKey {
                 proof_type: proof_type.clone(),
-                vk_data,
+                vk_data: vk_data.try_into().map_err(|_| Error::<T>::InvalidProofData)?,
                 registered_by: registered_by_did,
             };
 
@@ -251,7 +251,13 @@ pub mod pallet {
                 Error::<T>::SchemaAlreadyExists
             );
 
-            ProofSchemas::<T>::insert(&proof_type, field_descriptions);
+            let bounded_descriptions: BoundedVec<BoundedVec<u8, ConstU32<128>>, ConstU32<32>> = field_descriptions.into_iter()
+                .map(|desc| desc.try_into().map_err(|_| Error::<T>::InvalidProofData))
+                .collect::<Result<Vec<_>, _>>()?
+                .try_into()
+                .map_err(|_| Error::<T>::InvalidProofData)?;
+
+            ProofSchemas::<T>::insert(&proof_type, bounded_descriptions);
 
             Self::deposit_event(Event::ProofSchemaCreated {
                 proof_type,
@@ -327,7 +333,7 @@ pub mod pallet {
         fn verify_groth16_proof(
             vk_data: &[u8],
             proof_data: &[u8],
-            public_inputs: &[Vec<u8>],
+            public_inputs: &[BoundedVec<u8, ConstU32<64>>],
         ) -> Result<bool, ()> {
             // Deserialize verification key
             let vk = VerifyingKey::<Bn254>::deserialize_compressed(vk_data)
@@ -357,7 +363,7 @@ pub mod pallet {
 
         /// Convert bytes to field element
         #[cfg(feature = "std")]
-        fn bytes_to_field_element(bytes: &[u8]) -> Option<Fr> {
+        fn bytes_to_field_element(bytes: &[u8]) -> Option<ark_bn254::Fr> {
             if bytes.len() > 32 {
                 return None;
             }
@@ -365,7 +371,7 @@ pub mod pallet {
             let mut padded = [0u8; 32];
             padded[..bytes.len()].copy_from_slice(bytes);
             
-            Fr::from_be_bytes_mod_order(&padded).into()
+            Some(ark_bn254::Fr::from_be_bytes_mod_order(&padded))
         }
 
         /// Generate public inputs for age proof
@@ -410,7 +416,7 @@ pub mod pallet {
             }
             let proof_age = current_time_u64.saturating_sub(proof.created_at);
 
-            proof_age <= MAX_PROOF_AGE_SECS
+            proof_age <= 3600u64
         }
 
         /// Convert ZK proof type to internal proof type
@@ -431,7 +437,7 @@ pub mod circuits {
     use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
     use ark_r1cs_std::prelude::*;
     use ark_r1cs_std::fields::fp::FpVar;
-    use ark_bn254::Fr;
+    type Fr = <ark_bn254::Bn254 as ark_ec::pairing::Pairing>::ScalarField;
 
     /// Age verification circuit
     pub struct AgeVerificationCircuit {

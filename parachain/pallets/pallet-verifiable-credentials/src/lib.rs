@@ -22,7 +22,6 @@ pub mod pallet {
 
     #[pallet::config]
     pub trait Config: frame_system::Config + pallet_identity_registry::Config {
-        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         type TimeProvider: Time;
         type ZkCredentials: pallet_zk_credentials::Config;
     }
