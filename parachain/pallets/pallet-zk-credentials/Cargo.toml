@@ -12,7 +12,7 @@ publish = false
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-codec = { features = ["derive"], workspace = true }
+codec = { version = "3.7.4", default-features = false, package = "parity-scale-codec", features = ["derive"] }
 frame-support = { workspace = true, default-features = false }
 frame-system = { workspace = true, default-features = false }
 frame-executive = { workspace = true, default-features = false }
@@ -23,14 +23,14 @@ sp-io = { workspace = true }
 sp-runtime = { workspace = true }
 
 # Arkworks dependencies for ZK-SNARKs
-ark-std = { version = "0.4.0", default-features = false }
-ark-ff = { version = "0.4.0", default-features = false }
-ark-ec = { version = "0.4.0", default-features = false }
-ark-serialize = { version = "0.4.0", default-features = false }
-ark-groth16 = { version = "0.4.0", default-features = false }
-ark-bn254 = { version = "0.4.0", default-features = false }
-ark-relations = { version = "0.4.0", default-features = false }
-ark-r1cs-std = { version = "0.4.0", default-features = false }
+ark-std = { version = "0.5.0", default-features = false }
+ark-ff = { version = "0.5.0", default-features = false }
+ark-ec = { version = "0.5.0", default-features = false }
+ark-serialize = { version = "0.5.0", default-features = false }
+ark-groth16 = { version = "0.5.0", default-features = false }
+ark-bn254 = { version = "0.5.0", default-features = false }
+ark-relations = { version = "0.5.0", default-features = false }
+ark-r1cs-std = { version = "0.5.0", default-features = false }
 
 [dev-dependencies]
 sp-io = { workspace = true }

@@ -12,7 +12,7 @@ use ark_serialize::CanonicalDeserialize;
 use ark_ff::PrimeField;
 use ark_groth16::{Proof, VerifyingKey, prepare_verifying_key};
 use ark_ec::pairing::Pairing;
-use ark_bn254::{Bn254, Config as Bn254Config};
+use ark_bn254::{Bn254};
 type Fr = <Bn254 as Pairing>::ScalarField;
 
 const MAX_PROOF_AGE_SECS: u64 = 3600; // 1 hour in seconds
@@ -26,6 +26,7 @@ pub mod pallet {
     use sp_core::H256;
     use sp_runtime::traits::SaturatedConversion;
     use frame_support::BoundedVec;
+    use parity_scale_codec::{WrapperTypeEncode, WrapperTypeDecode};
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
@@ -37,16 +38,13 @@ pub mod pallet {
 
     /// Proof types supported
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[codec(mel_bound())]
+    #[codec(tracking)]
     pub enum ProofType {
-        /// Prove age is above threshold without revealing exact age
         AgeAbove,
-        /// Prove student status without revealing details
         StudentStatus,
-        /// Prove vaccination without revealing health records
         VaccinationStatus,
-        /// Prove employment without revealing salary
         EmploymentStatus,
-        /// Custom proof type
         Custom,
     }
 
@@ -61,17 +59,20 @@ pub mod pallet {
 
     /// ZK Proof structure
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[codec(mel_bound())]
+    #[codec(tracking)]
     pub struct ZkProof {
         pub proof_type: ProofType,
         pub proof_data: BoundedVec<u8, ConstU32<2048>>,
         pub public_inputs: BoundedVec<BoundedVec<u8, ConstU32<64>>, ConstU32<16>>,
         pub credential_hash: H256,
         pub created_at: u64,
-        pub nonce: H256, // to prevent replay attacks
+        pub nonce: H256,
     }
 
     /// Verification key for a proof circuit
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[codec(tracking)]
     pub struct CircuitVerifyingKey {
         pub proof_type: ProofType,
         pub vk_data: BoundedVec<u8, ConstU32<4096>>,
@@ -438,6 +439,7 @@ pub mod circuits {
     use ark_r1cs_std::prelude::*;
     use ark_r1cs_std::fields::fp::FpVar;
     type Fr = <ark_bn254::Bn254 as ark_ec::pairing::Pairing>::ScalarField;
+    use ark_ff::PrimeField;
 
     /// Age verification circuit
     pub struct AgeVerificationCircuit {
@@ -565,7 +567,7 @@ pub mod circuits {
     impl ConstraintSynthesizer<Fr> for VaccinationStatusCircuit {
         fn generate_constraints(self, cs: ConstraintSystemRef<Fr>) -> Result<(), SynthesisError> {
             // Public inputs
-            let vaccination_type_hash = FpVar::new_input(cs.clone(), || {
+            let _vaccination_type_hash = FpVar::new_input(cs.clone(), || {
                 self.vaccination_type
                     .as_ref()
                     .map(|v| {
@@ -643,7 +645,7 @@ pub mod circuits {
                     .ok_or(SynthesisError::AssignmentMissing)
             })?;
 
-            let employment_date_var = FpVar::new_witness(cs.clone(), || {
+            let _employment_date_var = FpVar::new_witness(cs.clone(), || {
                 self.employment_date
                     .map(|d| Fr::from(d as u64))
                     .ok_or(SynthesisError::AssignmentMissing)
