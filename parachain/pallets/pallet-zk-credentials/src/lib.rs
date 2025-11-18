@@ -33,20 +33,18 @@ pub mod pallet {
     use sp_core::H256;
     use sp_runtime::traits::SaturatedConversion;
     use frame_support::BoundedVec;
-    use parity_scale_codec::wrapper::{WrapperTypeEncode, WrapperTypeDecode};
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
+        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         type WeightInfo: WeightInfo;
     }
 
     /// Proof types supported
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-    #[codec(mel_bound())]
-    #[codec(tracking)]
     pub enum ProofType {
         AgeAbove,
         StudentStatus,
@@ -55,7 +53,7 @@ pub mod pallet {
         Custom,
     }
 
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, Copy)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, Copy, MaxEncodedLen)]
     pub enum ZkCredentialType {
         StudentStatus,
         VaccinationStatus,
@@ -64,10 +62,8 @@ pub mod pallet {
         Custom,
     }
 
-    /// ZK Proof structure
+    /// ZK Proof structure - FIXED CODEC BOUNDS
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-    #[codec(mel_bound())]
-    #[codec(tracking)]
     pub struct ZkProof {
         pub proof_type: ProofType,
         pub proof_data: BoundedVec<u8, ConstU32<2048>>,
@@ -77,9 +73,8 @@ pub mod pallet {
         pub nonce: H256,
     }
 
-    /// Verification key for a proof circuit
+    /// Verification key for a proof circuit - FIXED CODEC BOUNDS
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-    #[codec(tracking)]
     pub struct CircuitVerifyingKey {
         pub proof_type: ProofType,
         pub vk_data: BoundedVec<u8, ConstU32<4096>>,
@@ -104,7 +99,7 @@ pub mod pallet {
         _,
         Blake2_128Concat,
         H256, // proof hash
-        (<T as frame_system::Config>::AccountId, u64), // (verifier, timestamp)
+        (T::AccountId, u64), // (verifier, timestamp)
         OptionQuery,
     >;
 
@@ -125,11 +120,11 @@ pub mod pallet {
         /// Verification key registered [proof_type, registered_by]
         VerificationKeyRegistered { proof_type: ProofType, registered_by: H256 },
         /// Proof verified successfully [proof_hash, verifier, proof_type]
-        ProofVerified { proof_hash: H256, verifier: <T as frame_system::Config>::AccountId, proof_type: ProofType },
+        ProofVerified { proof_hash: H256, verifier: T::AccountId, proof_type: ProofType },
         /// Proof verification failed [proof_hash, reason]
         ProofVerificationFailed { proof_hash: H256, reason: Vec<u8> },
         /// Proof schema created [proof_type, creator]
-        ProofSchemaCreated { proof_type: ProofType, creator: <T as frame_system::Config>::AccountId },
+        ProofSchemaCreated { proof_type: ProofType, creator: T::AccountId },
     }
 
     #[pallet::error]
@@ -284,18 +279,15 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
 
             for proof in proofs {
-                // Get verification key
                 let circuit_vk = VerifyingKeys::<T>::get(&proof.proof_type)
                     .ok_or(Error::<T>::VerificationKeyNotFound)?;
 
-                // Check for replay
                 let proof_hash = Self::hash_proof(&proof);
                 ensure!(
                     !VerifiedProofs::<T>::contains_key(&proof_hash),
                     Error::<T>::ProofAlreadyVerified
                 );
 
-                // Verify (simplified for no_std)
                 #[cfg(feature = "std")]
                 let verification_result = Self::verify_groth16_proof(
                     &circuit_vk.vk_data,
@@ -343,18 +335,14 @@ pub mod pallet {
             proof_data: &[u8],
             public_inputs: &[BoundedVec<u8, ConstU32<64>>],
         ) -> Result<bool, ()> {
-            // Deserialize verification key
             let vk = VerifyingKey::<Bn254>::deserialize_compressed(vk_data)
                 .map_err(|_| ())?;
             
-            // Prepare verification key
             let pvk = prepare_verifying_key(&vk);
 
-            // Deserialize proof
             let proof = Proof::<Bn254>::deserialize_compressed(proof_data)
                 .map_err(|_| ())?;
 
-            // Convert public inputs to field elements
             let mut inputs = Vec::new();
             for input_bytes in public_inputs {
                 let input = Self::bytes_to_field_element(input_bytes)
@@ -362,14 +350,12 @@ pub mod pallet {
                 inputs.push(input);
             }
 
-            // Verify the proof
             let result = ark_groth16::Groth16::<Bn254>::verify_proof(&pvk, &proof, &inputs)
                 .map_err(|_| ())?;
 
             Ok(result)
         }
 
-        /// Convert bytes to field element
         #[cfg(feature = "std")]
         fn bytes_to_field_element(bytes: &[u8]) -> Option<ark_bn254::Fr> {
             if bytes.len() > 32 {
@@ -382,7 +368,6 @@ pub mod pallet {
             Some(ark_bn254::Fr::from_be_bytes_mod_order(&padded))
         }
 
-        /// Generate public inputs for age proof
         pub fn generate_age_proof_inputs(
             age_threshold: u32,
             current_year: u32,
@@ -393,7 +378,6 @@ pub mod pallet {
             ]
         }
 
-        /// Generate public inputs for student status proof
         pub fn generate_student_status_inputs(
             institution_hash: H256,
             is_active: bool,
@@ -404,17 +388,14 @@ pub mod pallet {
             ]
         }
 
-        /// Check if a proof has been verified
         pub fn is_proof_verified(proof_hash: &H256) -> bool {
             VerifiedProofs::<T>::contains_key(proof_hash)
         }
 
-        /// Get verification key for proof type
         pub fn get_verification_key(proof_type: &ProofType) -> Option<CircuitVerifyingKey> {
             VerifyingKeys::<T>::get(proof_type)
         }
 
-        /// Validate proof timestamp is recent
         fn validate_proof_freshness(proof: &ZkProof) -> bool {
             let current_time = frame_system::Pallet::<T>::block_number();
             let current_time_u64 = current_time.saturated_into::<u64>();
@@ -427,7 +408,6 @@ pub mod pallet {
             proof_age <= 3600u64
         }
 
-        /// Convert ZK proof type to internal proof type
         pub fn zk_credential_type_to_proof_type(zk_type: &ZkCredentialType) -> ProofType {
             match zk_type {
                 ZkCredentialType::StudentStatus => ProofType::StudentStatus,
