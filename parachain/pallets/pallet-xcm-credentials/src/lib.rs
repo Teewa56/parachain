@@ -1,9 +1,9 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-pub use pallet::*;
-
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
+
+pub mod weights;
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -12,60 +12,65 @@ pub mod pallet {
         traits::Time,
     };
     use frame_system::pallet_prelude::*;
-    use frame_support::pallet_prelude::*;
     use codec::Encode;
     use sp_std::vec::Vec;
     use sp_core::H256;
-    use xcm::latest::{
-        Junction, Junctions, MultiLocation, OriginKind, SendXcm, Xcm,
-        WeightLimit, AssetId, Fungibility, MultiAsset, MultiAssets,
+    use xcm::v3::{
+        Instruction,
+        Weight,
+        MultiLocation,
+        Junction,
+        Junctions,
+        Xcm,
+        OriginKind,
     };
-    use cumulus_primitives_core::relay_chain::BlockNumber as RelayBlockNumber;
+    use xcm::DoubleEncoded;
+    use pallet_xcm::Pallet as XcmPallet;
+    use frame_support::BoundedVec;
+    use crate::weights::WeightInfo;
+    use sp_runtime::traits::SaturatedConversion;
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
 
     #[pallet::config]
-    pub trait Config: frame_system::Config {
-        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
+    pub trait Config: frame_system::Config + pallet_xcm::Config {
         type TimeProvider: Time;
-        type XcmSender: SendXcm;
-        type XcmOrigin: From<<Self as frame_system::Config>::RuntimeOrigin>;
-        type ParachainId: Get<u32>;
+        type WeightInfo: WeightInfo;
     }
 
     /// Cross-chain credential verification request
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+    #[derive(Clone, Encode, Decode, DecodeWithMemTracking, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     pub struct XcmCredentialRequest {
         /// Source parachain ID
         pub source_para_id: u32,
         /// Credential hash to verify
         pub credential_hash: H256,
         /// Requester on source chain
-        pub requester: Vec<u8>,
+        pub requester: BoundedVec<u8, ConstU32<4096>>,
         /// Request timestamp
         pub timestamp: u64,
     }
 
     /// Cross-chain credential verification response
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+    #[derive(Clone, Encode, Decode, DecodeWithMemTracking, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     pub struct XcmCredentialResponse {
         pub target_para_id: u32,
         pub credential_hash: H256,
         pub is_valid: bool,
-        pub metadata: Vec<u8>,
+        pub metadata: BoundedVec<u8, ConstU32<4096>>,
         pub created_at: u64,
     }
 
     /// Registered parachains for cross-chain credentials
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Clone, Encode, Decode, DecodeWithMemTracking, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     pub struct ParachainRegistry {
         /// Parachain ID
         pub para_id: u32,
         /// Trusted for credential verification
         pub trusted: bool,
         /// Endpoint info (optional)
-        pub endpoint: Option<Vec<u8>>,
+        pub endpoint: Option<BoundedVec<u8, ConstU32<4096>>>,
     }
 
     /// Storage: Registered parachains
@@ -123,7 +128,7 @@ pub mod pallet {
         u32, // source para_id
         Blake2_128Concat,
         H256, // credential hash
-        Vec<u8>, // credential data
+        BoundedVec<u8, ConstU32<4096>>, // credential data
         OptionQuery,
     >;
 
@@ -228,12 +233,14 @@ pub mod pallet {
 
             ensure!(registry.trusted, Error::<T>::ParachainNotTrusted);
 
+            let requester_bv: BoundedVec<u8, ConstU32<4096>> = who.encode().try_into().map_err(|_| Error::<T>::InvalidXcmMessage)?;
+
             // Create verification request
             let request = XcmCredentialRequest {
                 source_para_id: Self::get_current_para_id(),
                 credential_hash,
-                requester: who.encode(),
-                timestamp: T::TimeProvider::now().as_secs(),
+                requester: requester_bv,
+                timestamp: T::TimeProvider::now().saturated_into::<u64>(),
             };
 
             // Calculate request hash
@@ -309,10 +316,9 @@ pub mod pallet {
             let registry = RegisteredParachains::<T>::get(source_para_id)
                 .ok_or(Error::<T>::ParachainNotRegistered)?;
 
-            ensure!(registry.trusted, Error::<T>::ParachainNotTrusted);
+            let credential_bv: BoundedVec<u8, ConstU32<4096>> = credential_data.try_into().map_err(|_| Error::<T>::InvalidXcmMessage)?;
 
-            // Store imported credential
-            ImportedCredentials::<T>::insert(source_para_id, credential_hash, credential_data);
+            ImportedCredentials::<T>::insert(source_para_id, credential_hash, credential_bv);
 
             Self::deposit_event(Event::CredentialImported {
                 credential_hash,
@@ -333,11 +339,14 @@ pub mod pallet {
         ) -> DispatchResult {
             let _origin = ensure_root(origin)?;
 
+            let metadata_bv: BoundedVec<u8, ConstU32<4096>> = metadata.try_into().map_err(|_| Error::<T>::InvalidXcmMessage)?;
+
             let response = XcmCredentialResponse {
                 target_para_id: Self::get_current_para_id(),
                 credential_hash,
                 is_valid,
-                metadata,
+                metadata: metadata_bv,
+                created_at: T::TimeProvider::now().saturated_into::<u64>(),
             };
 
             // Store response
@@ -385,25 +394,23 @@ pub mod pallet {
                 interior: Junctions::X1(Junction::Parachain(target_para_id)),
             };
 
-            // Construct XCM message
+            let encoded_call = Self::encode_verification_request_call(credential_hash, request_hash);
+
+            let double = DoubleEncoded::<()>::new(encoded_call);
+
             let message = Xcm(vec![
-                // Transact to call handle_verification_request on target chain
-                xcm::latest::Instruction::Transact {
+                Instruction::Transact {
                     origin_kind: OriginKind::Native,
-                    require_weight_at_most: xcm::latest::Weight::from_parts(1_000_000_000, 0),
-                    call: Self::encode_verification_request_call(credential_hash, request_hash),
-                },
+                    require_weight_at_most: Weight::from_parts(1_000_000_000, 0),
+                    call: double,
+                }
             ]);
 
-            // Send XCM
-            T::XcmSender::send_xcm(destination, message)
-                .map_err(|_| Error::<T>::XcmSendFailed)?;
-
-            let message_hash = sp_io::hashing::blake2_256(&message.encode()).into();
-            Self::deposit_event(Event::XcmMessageSent {
-                destination: target_para_id,
-                message_hash,
-            });
+            XcmPallet::<T>::send_xcm(
+                destination,          // impl Into<Junctions>
+                destination.clone(),  // impl Into<Location>
+                message               // Xcm<>
+            ).map_err(|_| Error::<T>::XcmSendFailed)?;
 
             Ok(())
         }
@@ -421,22 +428,24 @@ pub mod pallet {
 
             let source_para_id = Self::get_current_para_id();
 
-            // Construct XCM message
+            let encoded_call = Self::encode_import_credential_call(source_para_id, credential_hash, credential_data);
+
+            let double = DoubleEncoded::<()>::new(encoded_call);
+
             let message = Xcm(vec![
-                xcm::latest::Instruction::Transact {
+                Instruction::Transact {
                     origin_kind: OriginKind::Native,
-                    require_weight_at_most: xcm::latest::Weight::from_parts(1_000_000_000, 0),
-                    call: Self::encode_import_credential_call(
-                        source_para_id,
-                        credential_hash,
-                        credential_data,
-                    ),
-                },
+                    require_weight_at_most: Weight::from_parts(1_000_000_000, 0),
+                    call: double,
+                }
             ]);
 
             // Send XCM
-            T::XcmSender::send_xcm(destination, message)
-                .map_err(|_| Error::<T>::XcmSendFailed)?;
+            XcmPallet::<T>::send_xcm(
+                destination,          // impl Into<Junctions>
+                destination.clone(),  // impl Into<Location>
+                message               // Xcm<>
+            ).map_err(|_| Error::<T>::XcmSendFailed)?;
 
             Ok(())
         }
@@ -486,7 +495,7 @@ pub mod pallet {
             }
 
             // FIX: Add timestamp validation (responses not older than 1 hour)
-            let current_time = T::TimeProvider::now().as_secs();
+            let current_time: u64 = T::TimeProvider::now().saturated_into();
             let one_hour_secs = 3600u64;
 
             let valid_responses: Vec<_> = responses

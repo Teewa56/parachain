@@ -9440,6 +9440,22 @@ dependencies = [
 
 [[package]]
 name = "pallet-balances"
+version = "40.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3fbabdd4c43723e94a6f806853d19a2db5cac45152bc67ab1ae7327eedca0971"
+dependencies = [
+ "docify",
+ "frame-benchmarking 39.1.1",
+ "frame-support 39.1.0",
+ "frame-system 39.1.0",
+ "log",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-runtime 40.1.0",
+]
+
+[[package]]
+name = "pallet-balances"
 version = "41.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "58e04ed6c01cd829731ec7bcec0de4e49cd806195ca2448a1887c5493efd8262"
@@ -11382,6 +11398,31 @@ dependencies = [
 
 [[package]]
 name = "pallet-xcm"
+version = "18.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "37ca38e6c5f805b59b87807b781b48ee5aef0a56e1f60700d2ac15365f38fcf5"
+dependencies = [
+ "bounded-collections 0.2.4",
+ "frame-benchmarking 39.1.1",
+ "frame-support 39.1.0",
+ "frame-system 39.1.0",
+ "hex-literal",
+ "pallet-balances 40.1.0",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-core 35.0.0",
+ "sp-io 39.0.1",
+ "sp-runtime 40.1.0",
+ "staging-xcm 15.1.0",
+ "staging-xcm-builder 18.2.1",
+ "staging-xcm-executor 18.0.5",
+ "tracing",
+ "xcm-runtime-apis 0.5.3",
+]
+
+[[package]]
+name = "pallet-xcm"
 version = "19.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ca713f7e79da26a62438f0ce8f60af57c06ad8ce141349445f8153d2655ed4b3"
@@ -11502,6 +11543,7 @@ dependencies = [
  "frame-executive 41.0.0",
  "frame-support 41.0.0",
  "frame-system 41.0.0",
+ "pallet-xcm 18.1.4",
  "parity-scale-codec",
  "scale-info",
  "sp-core 37.0.0",
@@ -23440,6 +23482,21 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.110",
+]
+
+[[package]]
+name = "xcm-runtime-apis"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0f43f0f524f1a448ad2e30af5e693211967651ce7e012465e865674fc4fc6587"
+dependencies = [
+ "frame-support 39.1.0",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-api 35.0.0",
+ "sp-weights 31.1.0",
+ "staging-xcm 15.1.0",
+ "staging-xcm-executor 18.0.5",
 ]
 
 [[package]]

@@ -15,14 +15,7 @@ use ark_ff::PrimeField;
 #[cfg(feature = "std")]
 use ark_groth16::{Proof, VerifyingKey, prepare_verifying_key};
 #[cfg(feature = "std")]
-use ark_ec::pairing::Pairing;
-#[cfg(feature = "std")]
 use ark_bn254::{Bn254};
-
-#[cfg(feature = "std")]
-type Fr = <Bn254 as Pairing>::ScalarField;
-
-const MAX_PROOF_AGE_SECS: u64 = 3600; // 1 hour in seconds
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -43,9 +36,7 @@ pub mod pallet {
     }
 
     /// Proof types supported
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-    #[scale_info(skip_type_params(T))]
-    #[codec(mel_bound())]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen, DecodeWithMemTracking)]
     pub enum ProofType {
         AgeAbove,
         StudentStatus,
@@ -54,7 +45,7 @@ pub mod pallet {
         Custom,
     }
 
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, Copy, MaxEncodedLen)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, Copy, MaxEncodedLen, DecodeWithMemTracking)]
     pub enum ZkCredentialType {
         StudentStatus,
         VaccinationStatus,
@@ -63,10 +54,8 @@ pub mod pallet {
         Custom,
     }
 
-    /// ZK Proof structure - FIXED CODEC BOUNDS
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-    #[scale_info(skip_type_params(T))]
-    #[codec(mel_bound())]
+    /// ZK Proof structure 
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen, DecodeWithMemTracking)]
     pub struct ZkProof {
         pub proof_type: ProofType,
         pub proof_data: BoundedVec<u8, ConstU32<2048>>, // Max 2KB proof
@@ -76,8 +65,8 @@ pub mod pallet {
         pub nonce: H256, // nonce for uniqueness
     }
 
-    /// Verification key for a proof circuit - FIXED CODEC BOUNDS
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    /// Verification key for a proof circuit
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen, DecodeWithMemTracking)]
     pub struct CircuitVerifyingKey {
         pub proof_type: ProofType,
         pub vk_data: BoundedVec<u8, ConstU32<4096>>, // Max 4KB verification key

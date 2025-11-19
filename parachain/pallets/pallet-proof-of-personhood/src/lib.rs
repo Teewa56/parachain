@@ -250,7 +250,7 @@ pub mod pallet {
             );
 
             // Check cooldown period
-            let now = T::TimeProvider::now().as_secs();
+            let now = T::TimeProvider::now().saturated_into::<u64>();
             let cooldown_end = RegistrationCooldown::<T>::get(&nullifier);
             ensure!(now > cooldown_end, Error::<T>::RegistrationTooSoon);
 
@@ -339,7 +339,7 @@ pub mod pallet {
             T::Currency::reserve(&who, T::RecoveryDeposit::get())
                 .map_err(|_| Error::<T>::InsufficientDeposit)?;
 
-            let now = T::TimeProvider::now().as_secs();
+            let now = T::TimeProvider::now().saturated_into::<u64>();
             let active_at = now.saturating_add(RECOVERY_DELAY_SECONDS);
 
             let guardians_bounded: BoundedVec<T::AccountId, ConstU32<10>> = 
@@ -414,7 +414,7 @@ pub mod pallet {
             ensure!(request.requester == who, Error::<T>::NotAuthorized);
 
             // Check time lock elapsed
-            let now = T::TimeProvider::now().as_secs();
+            let now = T::TimeProvider::now().saturated_into::<u64>();
             ensure!(now >= request.active_at, Error::<T>::RecoveryPeriodNotElapsed);
 
             // Check guardian approvals (require 2/3 majority)
@@ -503,7 +503,7 @@ pub mod pallet {
 
             ensure!(identity.active, Error::<T>::NotAuthorized);
 
-            let now = T::TimeProvider::now().as_secs();
+            let now = T::TimeProvider::now().saturated_into::<u64>();
             LastActivity::<T>::insert(&did, now);
 
             // Auto-cancel recovery if user becomes active
@@ -595,7 +595,7 @@ pub mod pallet {
         /// Check if account is dormant (no activity for 12 months)
         pub fn is_account_dormant(did: &H256) -> bool {
             let last_active = LastActivity::<T>::get(did);
-            let now = T::TimeProvider::now().as_secs();
+            let now = T::TimeProvider::now().saturated_into::<u64>();
             let twelve_months = 12 * 30 * 24 * 60 * 60u64;
             
             now.saturating_sub(last_active) > twelve_months

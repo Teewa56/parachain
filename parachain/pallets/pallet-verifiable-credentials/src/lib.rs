@@ -1,9 +1,9 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-pub use pallet::*;
-
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
+
+pub mod weights;
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -14,16 +14,18 @@ pub mod pallet {
     use frame_system::pallet_prelude::*;
     use sp_std::vec::Vec;
     use sp_core::H256;
-    use sp_core::crypto::Ss58Codec;
-    use pallet_identity_registry;
+    use crate::weights::WeightInfo;
+    use pallet_identity_registry::pallet::Pallet as IdentityRegistryPallet;
+    use pallet_zk_credentials::Pallet as ZkCredentialsPallet;
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
 
     #[pallet::config]
-    pub trait Config: frame_system::Config + pallet_identity_registry::Config {
+    pub trait Config: frame_system::Config + pallet_identity_registry::pallet::Config {
         type TimeProvider: Time;
         type ZkCredentials: pallet_zk_credentials::Config;
+        type WeightInfo: WeightInfo;
     }
 
     /// Credential types
@@ -272,12 +274,12 @@ pub mod pallet {
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-            let (issuer_did, issuer_identity) = pallet_identity_registry::Pallet::<T>::get_identity_by_account(&who).ok_or(Error::<T>::IssuerIdentityNotFound)?;
+            let (issuer_did, issuer_identity) = IdentityRegistryPallet::<T>::get_identity_by_account(&who).ok_or(Error::<T>::IssuerIdentityNotFound)?;
 
             ensure!(issuer_identity.active, Error::<T>::IssuerInactive);
 
             ensure!(
-                pallet_identity_registry::Pallet::<T>::is_identity_active(&subject_did),
+                IdentityRegistryPallet::<T>::is_identity_active(&subject_did),
                 Error::<T>::SubjectIdentityNotFound
             );
 
@@ -291,7 +293,7 @@ pub mod pallet {
                 Error::<T>::InvalidCredentialStatus
             );
 
-            let now = T::TimeProvider::now().as_secs();
+            let now = T::TimeProvider::now().saturated_into::<u64>();
 
             let credential = Credential {
                 subject: subject_did,
@@ -340,7 +342,7 @@ pub mod pallet {
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-            let (issuer_did, _) = pallet_identity_registry::Pallet::<T>::get_identity_by_account(&who)
+            let (issuer_did, _) = IdentityRegistryPallet::<T>::get_identity_by_account(&who)
                 .ok_or(Error::<T>::IssuerIdentityNotFound)?;
 
             Credentials::<T>::try_mutate(&credential_id, |cred_opt| -> DispatchResult {
@@ -369,7 +371,7 @@ pub mod pallet {
             let mut credential = Credentials::<T>::get(&credential_id)
                 .ok_or(Error::<T>::CredentialNotFound)?;
 
-            let now = T::TimeProvider::now().as_secs();
+            let now = T::TimeProvider::now().saturated_into::<u64>();
             if credential.expires_at > 0 && now > credential.expires_at {
                 credential.status = CredentialStatus::Expired;
                 credential.metadata_hash = Self::generate_metadata_hash(
@@ -384,11 +386,11 @@ pub mod pallet {
             ensure!(credential.status == CredentialStatus::Active, Error::<T>::CredentialRevoked);
 
             ensure!(
-                pallet_identity_registry::Pallet::<T>::is_identity_active(&credential.issuer),
+                IdentityRegistryPallet::<T>::is_identity_active(&credential.issuer),
                 Error::<T>::IssuerIdentityNotFound
             );
             ensure!(
-                pallet_identity_registry::Pallet::<T>::is_identity_active(&credential.subject),
+                IdentityRegistryPallet::<T>::is_identity_active(&credential.subject),
                 Error::<T>::SubjectIdentityNotFound
             );
 
@@ -408,7 +410,7 @@ pub mod pallet {
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-            let (creator_did, _) = pallet_identity_registry::Pallet::<T>::get_identity_by_account(&who)
+            let (creator_did, _) = IdentityRegistryPallet::<T>::get_identity_by_account(&who)
                 .ok_or(Error::<T>::IssuerIdentityNotFound)?;
 
             ensure!(
@@ -451,7 +453,7 @@ pub mod pallet {
             ensure_root(origin)?;
 
             ensure!(
-                pallet_identity_registry::Pallet::<T>::is_identity_active(&issuer_did),
+                IdentityRegistryPallet::<T>::is_identity_active(&issuer_did),
                 Error::<T>::IssuerIdentityNotFound
             );
 
@@ -509,7 +511,7 @@ pub mod pallet {
                 Error::<T>::TooManyFieldsRequested
             );
 
-            let now = T::TimeProvider::now().as_secs();
+            let now = T::TimeProvider::now().saturated_into::<u64>();
 
             let disclosure_id = Self::generate_disclosure_id(
                 &credential_id,
@@ -542,12 +544,12 @@ pub mod pallet {
             );
 
             ensure!(
-                pallet_identity_registry::Pallet::<T>::is_identity_active(&credential.issuer),
+                IdentityRegistryPallet::<T>::is_identity_active(&credential.issuer),
                 Error::<T>::IssuerIdentityNotFound
             );
 
             ensure!(
-                pallet_identity_registry::Pallet::<T>::is_identity_active(&credential.subject),
+                IdentityRegistryPallet::<T>::is_identity_active(&credential.subject),
                 Error::<T>::SubjectIdentityNotFound
             );
 
@@ -577,9 +579,10 @@ pub mod pallet {
 
             Ok(())
         }
+    }
 
-        #[pallet::call_index(7)]
-        #[pallet::weight(T::WeightInfo::get_credentials_paginated())]
+    impl<T: Config> Pallet<T>{
+        /// Query function to get paginated credentials
         pub fn get_credentials_paginated(
             subject_did: H256,
             page: u32,
@@ -628,7 +631,7 @@ pub mod pallet {
             )?;
 
             // Step 5: Verify the proof is fresh
-            let now = T::TimeProvider::now().as_secs();
+            let now = T::TimeProvider::now().saturated_into::<u64>();
             if now.saturating_sub(credential.issued_at) > 86400 {  // 24 hours
                 return Err(Error::<T>::ProofTooOld);
             }
@@ -683,7 +686,7 @@ pub mod pallet {
             let type_hash = Self::hash_credential_type(credential_type);
             inputs.push(type_hash.as_bytes().to_vec());
 
-            let now = T::TimeProvider::now().as_secs();
+            let now = T::TimeProvider::now().saturated_into::<u64>();
             let mut timestamp_bytes = vec![0u8; 32];
             timestamp_bytes[24..32].copy_from_slice(&now.to_le_bytes());
             inputs.push(timestamp_bytes);
@@ -813,7 +816,7 @@ pub mod pallet {
                     return false;
                 }
 
-                let now = T::TimeProvider::now().as_secs();
+                let now = T::TimeProvider::now().saturated_into::<u64>();
                 if credential.expires_at > 0 && now > credential.expires_at {
                     return false;
                 }
@@ -1009,7 +1012,7 @@ pub mod pallet {
         /// Clean up expired credentials (called periodically)
         /// Frees storage by removing old credentials
         pub fn cleanup_expired_credentials(max_to_cleanup: u32) -> u32 {
-            let now = T::TimeProvider::now().as_secs();
+            let now = T::TimeProvider::now().saturated_into::<u64>();
             let mut count = 0u32;
             
             Credentials::<T>::iter().take(max_to_cleanup as usize).for_each(|(cred_id, cred)| {
@@ -1057,7 +1060,7 @@ pub mod pallet {
     impl<T: Config> Pallet<T> {
         /// Validate that expiration timestamp is reasonable
         fn validate_expiration_timestamp(expires_at: u64) -> bool {
-            let now = T::TimeProvider::now().as_secs();
+            let now = T::TimeProvider::now().saturated_into::<u64>();
             
             // Expiration must be in future (if set)
             if expires_at != 0 && expires_at <= now {
@@ -1082,7 +1085,7 @@ pub mod pallet {
             issuer_did: H256,
             credential_type: CredentialType,
         ) -> H256 {
-            let now = T::TimeProvider::now().as_secs();
+            let now = T::TimeProvider::now().saturated_into::<u64>();
             let credential = Credential {
                 subject: subject_did,
                 issuer: issuer_did,
