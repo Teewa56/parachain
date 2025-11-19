@@ -236,7 +236,7 @@ pub mod pallet {
     impl<T: Config> Pallet<T> {
         /// Create a proposal to add a trusted issuer
         #[pallet::call_index(0)]
-        #[pallet::weight(T::WeightInfo::propose_add_issuer())]
+        #[pallet::weight(<T as Config>::WeightInfo::propose_add_issuer())]
         pub fn propose_add_issuer(
             origin: OriginFor<T>,
             issuer_did: H256,
@@ -282,7 +282,7 @@ pub mod pallet {
 
         /// Vote on a proposal
         #[pallet::call_index(1)]
-        #[pallet::weight(T::WeightInfo::vote())]
+        #[pallet::weight(<T as Config>::WeightInfo::vote())]
         pub fn vote(
             origin: OriginFor<T>,
             proposal_id: u64,
@@ -344,58 +344,9 @@ pub mod pallet {
             Ok(())
         }
 
-        pub fn finalize_proposal(
-            origin: OriginFor<T>,
-            proposal_id: u64,
-        ) -> DispatchResult {
-            ensure_signed(origin)?;
-
-            let mut proposal = Proposals::<T>::get(proposal_id)
-                .ok_or(Error::<T>::ProposalNotFound)?;
-
-            let current_block = frame_system::Pallet::<T>::block_number();
-            ensure!(
-                current_block > proposal.voting_ends_at,
-                Error::<T>::VotingPeriodNotEnded
-            );
-
-            ensure!(
-                proposal.status == ProposalStatus::Active,
-                Error::<T>::ProposalNotActive
-            );
-
-            let approval_percentage = if proposal.total_votes > 0 {
-                // Use saturating math
-                (proposal.yes_votes.saturating_mul(100))
-                    .saturating_div(proposal.total_votes)
-            } else {
-                0
-            };
-
-            if approval_percentage >= T::ApprovalThreshold::get() as u32 {
-                proposal.status = ProposalStatus::Approved;
-                Self::deposit_event(Event::ProposalApproved { proposal_id });
-
-                Self::execute_proposal(&proposal)?;
-                proposal.status = ProposalStatus::Executed;
-                Self::deposit_event(Event::ProposalExecuted { proposal_id });
-
-                T::Currency::unreserve(&proposal.proposer, proposal.deposit);
-            } else {
-                proposal.status = ProposalStatus::Rejected;
-                Self::deposit_event(Event::ProposalRejected { proposal_id });
-
-                let (slashed, _remaining) = T::Currency::slash_reserved(&proposal.proposer, proposal.deposit);
-            }
-
-            Proposals::<T>::insert(proposal_id, proposal);
-
-            Ok(())
-        }
-
         /// Finalize a proposal after voting period
         #[pallet::call_index(2)]
-        #[pallet::weight(T::WeightInfo::finalize_proposal())]
+        #[pallet::weight(<T as Config>::WeightInfo::finalize_proposal())]
         pub fn finalize_proposal(
             origin: OriginFor<T>,
             proposal_id: u64,
@@ -446,7 +397,7 @@ pub mod pallet {
 
         /// Add council member (requires root)
         #[pallet::call_index(3)]
-        #[pallet::weight(T::WeightInfo::add_council_member())]
+        #[pallet::weight(<T as Config>::WeightInfo::add_council_member())]
         pub fn add_council_member(
             origin: OriginFor<T>,
             member: <T::Lookup as StaticLookup>::Source,
@@ -467,7 +418,7 @@ pub mod pallet {
 
         /// Remove council member (requires root)
         #[pallet::call_index(4)]
-        #[pallet::weight(T::WeightInfo::remove_council_member())]
+        #[pallet::weight(<T as Config>::WeightInfo::remove_council_member())]
         pub fn remove_council_member(
             origin: OriginFor<T>,
             member: <T::Lookup as StaticLookup>::Source,
@@ -486,7 +437,7 @@ pub mod pallet {
 
         /// Emergency remove trusted issuer
         #[pallet::call_index(5)]
-        #[pallet::weight(T::WeightInfo::emergency_remove_issuer())]
+        #[pallet::weight(<T as Config>::WeightInfo::emergency_remove_issuer())]
         pub fn emergency_remove_issuer(
             origin: OriginFor<T>,
             issuer_did: H256,
@@ -504,7 +455,7 @@ pub mod pallet {
 
         /// Cancel own proposal (before voting ends)
         #[pallet::call_index(6)]
-        #[pallet::weight(T::WeightInfo::cancel_proposal())]
+        #[pallet::weight(<T as Config>::WeightInfo::cancel_proposal())]
         pub fn cancel_proposal(
             origin: OriginFor<T>,
             proposal_id: u64,

@@ -17,6 +17,8 @@ pub mod pallet {
     use crate::weights::WeightInfo;
     use pallet_identity_registry::pallet::Pallet as IdentityRegistryPallet;
     use pallet_zk_credentials::Pallet as ZkCredentialsPallet;
+    use sp_runtime::traits::SaturatedConversion;
+    use frame_support::BoundedVec;
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
@@ -29,7 +31,7 @@ pub mod pallet {
     }
 
     /// Credential types
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Clone, Encode, Decode, DecodeWithMemTracking, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     pub enum CredentialType {
         Education,
         Health,
@@ -40,7 +42,7 @@ pub mod pallet {
     }
 
     /// Credential status
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Clone, Encode, Decode, DecodeWithMemTracking, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     pub enum CredentialStatus {
         Active,
         Revoked,
@@ -49,7 +51,7 @@ pub mod pallet {
     }
 
     /// Verifiable Credential structure
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Clone, Encode, Decode, DecodeWithMemTracking, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     #[scale_info(skip_type_params(T))]
     pub struct Credential<T: Config> {
         pub subject: H256,
@@ -64,33 +66,34 @@ pub mod pallet {
     }
 
     /// Credential schema for defining what fields a credential type should have
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen, DecodeWithMemTracking)]
+    #[scale_info(skip_type_params(T))]
     pub struct CredentialSchema {
         pub schema_id: H256,
         pub credential_type: CredentialType,
-        pub fields: Vec<Vec<u8>>,
-        pub required_fields: Vec<bool>,
+        pub fields: BoundedVec<BoundedVec<u8, ConstU32<64>>, ConstU32<100>>,
+        pub required_fields: BoundedVec<bool, ConstU32<100>>,
         pub creator: H256,
     }
 
     /// Selective disclosure request
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+    #[derive(Clone, Encode, Decode, DecodeWithMemTracking, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     pub struct DisclosureRequest {
         pub credential_id: H256,
         pub fields_to_reveal: Vec<u32>,
         pub proof: H256,
     }
 
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+    #[derive(Clone, Encode, Decode, DecodeWithMemTracking, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     pub struct SelectiveDisclosureRequest {
         pub credential_id: H256,
-        pub fields_to_reveal: Vec<u32>,
+        pub fields_to_reveal: BoundedVec<u32, ConstU32<50>>,
         pub proof: H256,
         pub timestamp: u64,
     }
 
     /// ZK Proof type for selective disclosure
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, Copy)]
+    #[derive(Clone, Encode, Decode, DecodeWithMemTracking, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     pub enum ZkCredentialType {
         StudentStatus,
         VaccinationStatus,
@@ -263,7 +266,7 @@ pub mod pallet {
     impl<T: Config> Pallet<T> {
         /// Issue a new credential
         #[pallet::call_index(0)]
-        #[pallet::weight(T::WeightInfo::issue_credential())]
+        #[pallet::weight(<T as Config>::WeightInfo::issue_credential())]
         pub fn issue_credential(
             origin: OriginFor<T>,
             subject_did: H256,
@@ -293,7 +296,7 @@ pub mod pallet {
                 Error::<T>::InvalidCredentialStatus
             );
 
-            let now = T::TimeProvider::now().saturated_into::<u64>();
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
 
             let credential = Credential {
                 subject: subject_did,
@@ -335,7 +338,7 @@ pub mod pallet {
 
         /// Revoke a credential (only issuer can revoke)
         #[pallet::call_index(1)]
-        #[pallet::weight(T::WeightInfo::revoke_credential())]
+        #[pallet::weight(<T as Config>::WeightInfo::revoke_credential())]
         pub fn revoke_credential(
             origin: OriginFor<T>,
             credential_id: H256,
@@ -361,7 +364,7 @@ pub mod pallet {
 
         /// Verify a credential
         #[pallet::call_index(2)]
-        #[pallet::weight(T::WeightInfo::verify_credential())]
+        #[pallet::weight(<T as Config>::WeightInfo::verify_credential())]
         pub fn verify_credential(
             origin: OriginFor<T>,
             credential_id: H256,
@@ -371,8 +374,8 @@ pub mod pallet {
             let mut credential = Credentials::<T>::get(&credential_id)
                 .ok_or(Error::<T>::CredentialNotFound)?;
 
-            let now = T::TimeProvider::now().saturated_into::<u64>();
-            if credential.expires_at > 0 && now > credential.expires_at {
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
+            if credential.expires_at > 0 && now.saturating_sub(credential.expires_at) > 0 {
                 credential.status = CredentialStatus::Expired;
                 credential.metadata_hash = Self::generate_metadata_hash(
                     credential.issued_at,
@@ -401,7 +404,7 @@ pub mod pallet {
 
         /// Create a credential schema
         #[pallet::call_index(3)]
-        #[pallet::weight(T::WeightInfo::create_schema())]
+        #[pallet::weight(<T as Config>::WeightInfo::create_schema())]
         pub fn create_schema(
             origin: OriginFor<T>,
             credential_type: CredentialType,
@@ -444,7 +447,7 @@ pub mod pallet {
 
         /// Add a trusted issuer for a credential type (requires root/governance)
         #[pallet::call_index(4)]
-        #[pallet::weight(T::WeightInfo::add_trusted_issuer())]
+        #[pallet::weight(<T as Config>::WeightInfo::add_trusted_issuer())]
         pub fn add_trusted_issuer(
             origin: OriginFor<T>,
             credential_type: CredentialType,
@@ -466,7 +469,7 @@ pub mod pallet {
 
         /// Remove a trusted issuer
         #[pallet::call_index(5)]
-        #[pallet::weight(T::WeightInfo::remove_trusted_issuer())]
+        #[pallet::weight(<T as Config>::WeightInfo::remove_trusted_issuer())]
         pub fn remove_trusted_issuer(
             origin: OriginFor<T>,
             credential_type: CredentialType,
@@ -483,7 +486,7 @@ pub mod pallet {
 
         /// Selective disclosure with  ZK proof verification
         #[pallet::call_index(6)]
-        #[pallet::weight(T::WeightInfo::selective_disclosure())]
+        #[pallet::weight(<T as Config>::WeightInfo::selective_disclosure())]
         pub fn selective_disclosure(
             origin: OriginFor<T>,
             credential_id: H256,
@@ -511,7 +514,7 @@ pub mod pallet {
                 Error::<T>::TooManyFieldsRequested
             );
 
-            let now = T::TimeProvider::now().saturated_into::<u64>();
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
 
             let disclosure_id = Self::generate_disclosure_id(
                 &credential_id,
@@ -631,7 +634,7 @@ pub mod pallet {
             )?;
 
             // Step 5: Verify the proof is fresh
-            let now = T::TimeProvider::now().saturated_into::<u64>();
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
             if now.saturating_sub(credential.issued_at) > 86400 {  // 24 hours
                 return Err(Error::<T>::ProofTooOld);
             }
@@ -686,7 +689,7 @@ pub mod pallet {
             let type_hash = Self::hash_credential_type(credential_type);
             inputs.push(type_hash.as_bytes().to_vec());
 
-            let now = T::TimeProvider::now().saturated_into::<u64>();
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
             let mut timestamp_bytes = vec![0u8; 32];
             timestamp_bytes[24..32].copy_from_slice(&now.to_le_bytes());
             inputs.push(timestamp_bytes);
@@ -710,7 +713,7 @@ pub mod pallet {
 
         /// Hash the credential type
         fn hash_credential_type(credential_type: &CredentialType) -> H256 {
-            let type_str = match credential_type {
+            let type_str: &[u8] = match credential_type {
                 CredentialType::Education => b"Education",
                 CredentialType::Health => b"Health",
                 CredentialType::Employment => b"Employment",
@@ -816,8 +819,8 @@ pub mod pallet {
                     return false;
                 }
 
-                let now = T::TimeProvider::now().saturated_into::<u64>();
-                if credential.expires_at > 0 && now > credential.expires_at {
+                let now = <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
+                if credential.expires_at > 0 && now.saturating_sub(credential.expires_at) > 0 {
                     return false;
                 }
 
@@ -986,7 +989,7 @@ pub mod pallet {
             let vk = pallet_zk_credentials::Pallet::<T::ZkCredentials>::get_verification_key(&proof_type)
                 .ok_or(Error::<T>::VerificationKeyNotFound)?;
             
-            Ok(vk.vk_data)
+            Ok(vk.vk_data.into_inner())
         }
 
         /// Convert ZkCredentialType to ProofType for lookup
@@ -1012,7 +1015,7 @@ pub mod pallet {
         /// Clean up expired credentials (called periodically)
         /// Frees storage by removing old credentials
         pub fn cleanup_expired_credentials(max_to_cleanup: u32) -> u32 {
-            let now = T::TimeProvider::now().saturated_into::<u64>();
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
             let mut count = 0u32;
             
             Credentials::<T>::iter().take(max_to_cleanup as usize).for_each(|(cred_id, cred)| {
@@ -1060,7 +1063,7 @@ pub mod pallet {
     impl<T: Config> Pallet<T> {
         /// Validate that expiration timestamp is reasonable
         fn validate_expiration_timestamp(expires_at: u64) -> bool {
-            let now = T::TimeProvider::now().saturated_into::<u64>();
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
             
             // Expiration must be in future (if set)
             if expires_at != 0 && expires_at <= now {
@@ -1085,7 +1088,7 @@ pub mod pallet {
             issuer_did: H256,
             credential_type: CredentialType,
         ) -> H256 {
-            let now = T::TimeProvider::now().saturated_into::<u64>();
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
             let credential = Credential {
                 subject: subject_did,
                 issuer: issuer_did,

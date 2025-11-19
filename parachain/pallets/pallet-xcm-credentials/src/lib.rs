@@ -191,7 +191,7 @@ pub mod pallet {
     impl<T: Config> Pallet<T> {
         /// Register a parachain for cross-chain credentials
         #[pallet::call_index(0)]
-        #[pallet::weight(T::WeightInfo::register_parachain())]
+        #[pallet::weight(<T as Config>::WeightInfo::register_parachain())]
         pub fn register_parachain(
             origin: OriginFor<T>,
             para_id: u32,
@@ -219,7 +219,7 @@ pub mod pallet {
 
         /// Request credential verification from another parachain
         #[pallet::call_index(1)]
-        #[pallet::weight(T::WeightInfo::request_cross_chain_verification())]
+        #[pallet::weight(<T as Config>::WeightInfo::request_cross_chain_verification())]
         pub fn request_cross_chain_verification(
             origin: OriginFor<T>,
             credential_hash: H256,
@@ -240,7 +240,7 @@ pub mod pallet {
                 source_para_id: Self::get_current_para_id(),
                 credential_hash,
                 requester: requester_bv,
-                timestamp: T::TimeProvider::now().saturated_into::<u64>(),
+                timestamp: <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>(),
             };
 
             // Calculate request hash
@@ -262,7 +262,7 @@ pub mod pallet {
 
         /// Export a credential to another parachain
         #[pallet::call_index(2)]
-        #[pallet::weight(T::WeightInfo::export_credential())]
+        #[pallet::weight(<T as Config>::WeightInfo::export_credential())]
         pub fn export_credential(
             origin: OriginFor<T>,
             credential_hash: H256,
@@ -303,7 +303,7 @@ pub mod pallet {
 
         /// Handle incoming credential import (called by XCM)
         #[pallet::call_index(3)]
-        #[pallet::weight(T::WeightInfo::import_credential())]
+        #[pallet::weight(<T as Config>::WeightInfo::import_credential())]
         pub fn import_credential(
             origin: OriginFor<T>,
             source_para_id: u32,
@@ -330,7 +330,7 @@ pub mod pallet {
 
         /// Handle verification response (called by XCM)
         #[pallet::call_index(4)]
-        #[pallet::weight(T::WeightInfo::handle_verification_response())]
+        #[pallet::weight(<T as Config>::WeightInfo::handle_verification_response())]
         pub fn handle_verification_response(
             origin: OriginFor<T>,
             credential_hash: H256,
@@ -346,7 +346,7 @@ pub mod pallet {
                 credential_hash,
                 is_valid,
                 metadata: metadata_bv,
-                created_at: T::TimeProvider::now().saturated_into::<u64>(),
+                created_at: <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>(),
             };
 
             // Store response
@@ -367,7 +367,7 @@ pub mod pallet {
 
         /// Deregister a parachain
         #[pallet::call_index(5)]
-        #[pallet::weight(T::WeightInfo::deregister_parachain())]
+        #[pallet::weight(<T as Config>::WeightInfo::deregister_parachain())]
         pub fn deregister_parachain(
             origin: OriginFor<T>,
             para_id: u32,
@@ -495,7 +495,7 @@ pub mod pallet {
             }
 
             // FIX: Add timestamp validation (responses not older than 1 hour)
-            let current_time: u64 = T::TimeProvider::now().saturated_into();
+            let current_time: u64 = <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into();
             let one_hour_secs = 3600u64;
 
             let valid_responses: Vec<_> = responses

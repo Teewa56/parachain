@@ -217,7 +217,7 @@ pub mod pallet {
     impl<T: Config> Pallet<T> {
         /// Register personhood with biometric nullifier
         #[pallet::call_index(0)]
-        #[pallet::weight(T::WeightInfo::register_personhood())]
+        #[pallet::weight(<T as Config>::WeightInfo::register_personhood())]
         pub fn register_personhood(
             origin: OriginFor<T>,
             did: H256,
@@ -250,7 +250,7 @@ pub mod pallet {
             );
 
             // Check cooldown period
-            let now = T::TimeProvider::now().saturated_into::<u64>();
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
             let cooldown_end = RegistrationCooldown::<T>::get(&nullifier);
             ensure!(now > cooldown_end, Error::<T>::RegistrationTooSoon);
 
@@ -289,7 +289,7 @@ pub mod pallet {
 
         /// Request identity recovery
         #[pallet::call_index(1)]
-        #[pallet::weight(T::WeightInfo::request_recovery())]
+        #[pallet::weight(<T as Config>::WeightInfo::request_recovery())]
         pub fn request_recovery(
             origin: OriginFor<T>,
             old_did: H256,
@@ -339,7 +339,7 @@ pub mod pallet {
             T::Currency::reserve(&who, T::RecoveryDeposit::get())
                 .map_err(|_| Error::<T>::InsufficientDeposit)?;
 
-            let now = T::TimeProvider::now().saturated_into::<u64>();
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
             let active_at = now.saturating_add(RECOVERY_DELAY_SECONDS);
 
             let guardians_bounded: BoundedVec<T::AccountId, ConstU32<10>> = 
@@ -371,7 +371,7 @@ pub mod pallet {
 
         /// Guardian approves recovery
         #[pallet::call_index(2)]
-        #[pallet::weight(T::WeightInfo::approve_recovery())]
+        #[pallet::weight(<T as Config>::WeightInfo::approve_recovery())]
         pub fn approve_recovery(
             origin: OriginFor<T>,
             did: H256,
@@ -401,7 +401,7 @@ pub mod pallet {
 
         /// Finalize recovery after time lock
         #[pallet::call_index(3)]
-        #[pallet::weight(T::WeightInfo::finalize_recovery())]
+        #[pallet::weight(<T as Config>::WeightInfo::finalize_recovery())]
         pub fn finalize_recovery(
             origin: OriginFor<T>,
             did: H256,
@@ -414,7 +414,7 @@ pub mod pallet {
             ensure!(request.requester == who, Error::<T>::NotAuthorized);
 
             // Check time lock elapsed
-            let now = T::TimeProvider::now().saturated_into::<u64>();
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
             ensure!(now >= request.active_at, Error::<T>::RecoveryPeriodNotElapsed);
 
             // Check guardian approvals (require 2/3 majority)
@@ -467,7 +467,7 @@ pub mod pallet {
 
         /// Cancel recovery request
         #[pallet::call_index(4)]
-        #[pallet::weight(T::WeightInfo::cancel_recovery())]
+        #[pallet::weight(<T as Config>::WeightInfo::cancel_recovery())]
         pub fn cancel_recovery(
             origin: OriginFor<T>,
             did: H256,
@@ -493,7 +493,7 @@ pub mod pallet {
 
         /// Record activity (prevents dormant account takeover)
         #[pallet::call_index(5)]
-        #[pallet::weight(T::WeightInfo::record_activity())]
+        #[pallet::weight(<T as Config>::WeightInfo::record_activity())]
         pub fn record_activity(origin: OriginFor<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
@@ -503,7 +503,7 @@ pub mod pallet {
 
             ensure!(identity.active, Error::<T>::NotAuthorized);
 
-            let now = T::TimeProvider::now().saturated_into::<u64>();
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
             LastActivity::<T>::insert(&did, now);
 
             // Auto-cancel recovery if user becomes active
@@ -595,7 +595,7 @@ pub mod pallet {
         /// Check if account is dormant (no activity for 12 months)
         pub fn is_account_dormant(did: &H256) -> bool {
             let last_active = LastActivity::<T>::get(did);
-            let now = T::TimeProvider::now().saturated_into::<u64>();
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
             let twelve_months = 12 * 30 * 24 * 60 * 60u64;
             
             now.saturating_sub(last_active) > twelve_months

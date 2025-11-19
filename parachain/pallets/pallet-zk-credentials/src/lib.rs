@@ -145,7 +145,7 @@ pub mod pallet {
     impl<T: Config> Pallet<T> {
         /// Register a verification key for a proof circuit
         #[pallet::call_index(0)]
-        #[pallet::weight(T::WeightInfo::register_verification_key())]
+        #[pallet::weight(<T as Config>::WeightInfo::register_verification_key())]
         pub fn register_verification_key(
             origin: OriginFor<T>,
             proof_type: ProofType,
@@ -172,7 +172,7 @@ pub mod pallet {
 
         /// Verify a ZK proof
         #[pallet::call_index(1)]
-        #[pallet::weight(T::WeightInfo::verify_proof())]
+        #[pallet::weight(<T as Config>::WeightInfo::verify_proof())]
         pub fn verify_proof(
             origin: OriginFor<T>,
             proof: ZkProof,
@@ -234,7 +234,7 @@ pub mod pallet {
 
         /// Create proof schema
         #[pallet::call_index(2)]
-        #[pallet::weight(T::WeightInfo::create_proof_schema())]
+        #[pallet::weight(<T as Config>::WeightInfo::create_proof_schema())]
         pub fn create_proof_schema(
             origin: OriginFor<T>,
             proof_type: ProofType,
@@ -263,7 +263,7 @@ pub mod pallet {
 
         /// Batch verify multiple proofs
         #[pallet::call_index(3)]
-        #[pallet::weight(T::WeightInfo::batch_verify_proofs(proofs.len() as u32))]
+        #[pallet::weight(<T as Config>::WeightInfo::batch_verify_proofs(proofs.len() as u32))]
         pub fn batch_verify_proofs(
             origin: OriginFor<T>,
             proofs: Vec<ZkProof>,
