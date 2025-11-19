@@ -27,7 +27,7 @@ const MAX_PROOF_AGE_SECS: u64 = 3600; // 1 hour in seconds
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
-    use frame_support::pallet_prelude::*;
+    use frame_support::{pallet_prelude::*, traits::ConstU32};
     use frame_system::pallet_prelude::*;
     use sp_std::vec::Vec;
     use sp_core::H256;
@@ -39,12 +39,13 @@ pub mod pallet {
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
-        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         type WeightInfo: WeightInfo;
     }
 
     /// Proof types supported
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[scale_info(skip_type_params(T))]
+    #[codec(mel_bound())]
     pub enum ProofType {
         AgeAbove,
         StudentStatus,
@@ -64,20 +65,22 @@ pub mod pallet {
 
     /// ZK Proof structure - FIXED CODEC BOUNDS
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[scale_info(skip_type_params(T))]
+    #[codec(mel_bound())]
     pub struct ZkProof {
         pub proof_type: ProofType,
-        pub proof_data: BoundedVec<u8, ConstU32<2048>>,
-        pub public_inputs: BoundedVec<BoundedVec<u8, ConstU32<64>>, ConstU32<16>>,
+        pub proof_data: BoundedVec<u8, ConstU32<2048>>, // Max 2KB proof
+        pub public_inputs: BoundedVec<BoundedVec<u8, ConstU32<64>>, ConstU32<16>>, // Max 16 inputs, 64 bytes each
         pub credential_hash: H256,
         pub created_at: u64,
-        pub nonce: H256,
+        pub nonce: H256, // nonce for uniqueness
     }
 
     /// Verification key for a proof circuit - FIXED CODEC BOUNDS
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     pub struct CircuitVerifyingKey {
         pub proof_type: ProofType,
-        pub vk_data: BoundedVec<u8, ConstU32<4096>>,
+        pub vk_data: BoundedVec<u8, ConstU32<4096>>, // Max 4KB verification key
         pub registered_by: H256,
     }
 
@@ -122,7 +125,7 @@ pub mod pallet {
         /// Proof verified successfully [proof_hash, verifier, proof_type]
         ProofVerified { proof_hash: H256, verifier: T::AccountId, proof_type: ProofType },
         /// Proof verification failed [proof_hash, reason]
-        ProofVerificationFailed { proof_hash: H256, reason: Vec<u8> },
+        ProofVerificationFailed { proof_hash: H256, reason: BoundedVec<u8, ConstU32<256>> },
         /// Proof schema created [proof_type, creator]
         ProofSchemaCreated { proof_type: ProofType, creator: T::AccountId },
     }
@@ -226,14 +229,14 @@ pub mod pallet {
                 Ok(false) => {
                     Self::deposit_event(Event::ProofVerificationFailed {
                         proof_hash,
-                        reason: b"Proof verification returned false".to_vec(),
+                        reason: Self::bounded_reason(b"Proof verification returned false"),
                     });
                     Err(Error::<T>::ProofVerificationFailed.into())
                 }
                 Err(_) => {
                     Self::deposit_event(Event::ProofVerificationFailed {
                         proof_hash,
-                        reason: b"Proof verification error".to_vec(),
+                        reason: Self::bounded_reason(b"Proof verification error"),
                     });
                     Err(Error::<T>::ProofVerificationFailed.into())
                 }
@@ -315,6 +318,10 @@ pub mod pallet {
     }
 
     impl<T: Config> Pallet<T> {
+        fn bounded_reason(s: &'static [u8]) -> BoundedVec<u8, ConstU32<256>> {
+            s.to_vec().try_into().expect("static reason fits in BoundedVec<256>")
+        }
+
         /// Hash a proof to detect replays
         pub fn hash_proof(proof: &ZkProof) -> H256 {
             let mut data = Vec::new();
