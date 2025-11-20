@@ -1,4 +1,5 @@
 use frame_support::weights::Weight;
+use frame_support::traits::Get;
 
 pub trait WeightInfo {
     fn issue_credential() -> Weight;

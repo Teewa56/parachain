@@ -10,15 +10,16 @@ pub mod pallet {
     use frame_support::{
         pallet_prelude::*,
         traits::Time,
+        BoundedVec,
     };
     use frame_system::pallet_prelude::*;
     use sp_std::vec::Vec;
+    use sp_std::convert::TryInto;
     use sp_core::H256;
     use crate::weights::WeightInfo;
     use pallet_identity_registry::pallet::Pallet as IdentityRegistryPallet;
-    use pallet_zk_credentials::Pallet as ZkCredentialsPallet;
+    use pallet_zk_credentials::pallet::Pallet as ZkCredentialsPallet;
     use sp_runtime::traits::SaturatedConversion;
-    use frame_support::BoundedVec;
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
@@ -26,7 +27,7 @@ pub mod pallet {
     #[pallet::config]
     pub trait Config: frame_system::Config + pallet_identity_registry::pallet::Config {
         type TimeProvider: Time;
-        type ZkCredentials: pallet_zk_credentials::Config;
+        type ZkCredentials: pallet_zk_credentials::pallet::Config;
         type WeightInfo: WeightInfo;
     }
 
@@ -978,7 +979,7 @@ pub mod pallet {
     
     impl<T: Config> Pallet<T> 
     where
-        T::ZkCredentials: pallet_zk_credentials::Config,
+        T::ZkCredentials: pallet_zk_credentials::pallet::Config,
     {
         /// Get verification key from pallet-zk-credentials
         fn get_verification_key_for_type(zk_type: &ZkCredentialType) -> Result<Vec<u8>, Error<T>> {
@@ -986,20 +987,20 @@ pub mod pallet {
             let proof_type = Self::zk_credential_type_to_proof_type(zk_type);
             
             // Get from pallet-zk-credentials
-            let vk = pallet_zk_credentials::Pallet::<T::ZkCredentials>::get_verification_key(&proof_type)
+            let vk = ZkCredentialsPallet::<T::ZkCredentials>::get_verification_key(&proof_type)
                 .ok_or(Error::<T>::VerificationKeyNotFound)?;
             
             Ok(vk.vk_data.into_inner())
         }
 
         /// Convert ZkCredentialType to ProofType for lookup
-        fn zk_credential_type_to_proof_type(zk_type: &ZkCredentialType) -> pallet_zk_credentials::ProofType {
+        fn zk_credential_type_to_proof_type(zk_type: &ZkCredentialType) -> ZkCredentialsPallet::ProofType {
             match zk_type {
-                ZkCredentialType::StudentStatus => pallet_zk_credentials::ProofType::StudentStatus,
-                ZkCredentialType::VaccinationStatus => pallet_zk_credentials::ProofType::VaccinationStatus,
-                ZkCredentialType::EmploymentStatus => pallet_zk_credentials::ProofType::EmploymentStatus,
-                ZkCredentialType::AgeVerification => pallet_zk_credentials::ProofType::AgeAbove,
-                ZkCredentialType::Custom => pallet_zk_credentials::ProofType::Custom,
+                ZkCredentialType::StudentStatus => ZkCredentialsPallet::ProofType::StudentStatus,
+                ZkCredentialType::VaccinationStatus => ZkCredentialsPallet::ProofType::VaccinationStatus,
+                ZkCredentialType::EmploymentStatus => ZkCredentialsPallet::ProofType::EmploymentStatus,
+                ZkCredentialType::AgeVerification => ZkCredentialsPallet::ProofType::AgeAbove,
+                ZkCredentialType::Custom => ZkCredentialsPallet::ProofType::Custom,
             }
         }
     }

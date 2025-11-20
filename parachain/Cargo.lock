@@ -2553,9 +2553,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.5.52"
+version = "4.5.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa8120877db0e5c011242f96806ce3c94e0737ab8108532a76a3300a01db2ab8"
+checksum = "c9e340e012a1bf4935f5282ed1436d1489548e8f72308207ea5df0e23d2d03f8"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -2563,9 +2563,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.5.52"
+version = "4.5.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02576b399397b659c26064fbc92a75fede9d18ffd5f80ca1cd74ddab167016e1"
+checksum = "d76b5d13eaa18c901fd2f7fca939fefe3a0727a953561fefdf3b2922b8569d00"
 dependencies = [
  "anstream",
  "anstyle",
@@ -5115,7 +5115,7 @@ checksum = "a7cb8796f93fa038f979a014234d632e9688a120e745f936e2635123c77537f7"
 dependencies = [
  "frame-metadata 21.0.0",
  "parity-scale-codec",
- "scale-decode 0.16.0",
+ "scale-decode 0.16.1",
  "scale-info",
  "scale-type-resolver",
  "sp-crypto-hashing 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -17055,14 +17055,14 @@ dependencies = [
 
 [[package]]
 name = "scale-decode"
-version = "0.16.0"
+version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d78196772d25b90a98046794ce0fe2588b39ebdfbdc1e45b4c6c85dd43bebad"
+checksum = "e60e74b30ef53a3b17a126cf9d5cc81333f301c487cbbff3bc285bf094a14dea"
 dependencies = [
  "parity-scale-codec",
  "primitive-types 0.13.1",
  "scale-bits 0.7.0",
- "scale-decode-derive 0.16.0",
+ "scale-decode-derive 0.16.1",
  "scale-type-resolver",
  "smallvec",
  "thiserror 2.0.17",
@@ -17082,9 +17082,9 @@ dependencies = [
 
 [[package]]
 name = "scale-decode-derive"
-version = "0.16.0"
+version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f4b54a1211260718b92832b661025d1f1a4b6930fbadd6908e00edd265fa5f7"
+checksum = "c11c7ba143dc8ac146c78e215f3045ac4bc3bb3733fcac6996055a211ac222c7"
 dependencies = [
  "darling 0.20.11",
  "proc-macro2",
@@ -17226,7 +17226,7 @@ dependencies = [
  "either",
  "parity-scale-codec",
  "scale-bits 0.7.0",
- "scale-decode 0.16.0",
+ "scale-decode 0.16.1",
  "scale-encode 0.10.0",
  "scale-type-resolver",
  "thiserror 2.0.17",
@@ -21112,7 +21112,7 @@ dependencies = [
  "parity-scale-codec",
  "primitive-types 0.13.1",
  "scale-bits 0.7.0",
- "scale-decode 0.16.0",
+ "scale-decode 0.16.1",
  "scale-encode 0.10.0",
  "scale-info",
  "scale-value 0.18.1",
