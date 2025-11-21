@@ -283,7 +283,7 @@ dependencies = [
  "const-hex",
  "derive_more 2.0.1",
  "foldhash 0.2.0",
- "hashbrown 0.16.0",
+ "hashbrown 0.16.1",
  "indexmap 2.12.0",
  "itoa",
  "k256",
@@ -1273,7 +1273,7 @@ checksum = "5d7a6d93659a5390b50b77090f488939684d91445ea87aee6f7b4ed03c1a02d1"
 dependencies = [
  "cumulus-pallet-parachain-system",
  "cumulus-pallet-xcmp-queue",
- "cumulus-primitives-core",
+ "cumulus-primitives-core 0.18.1",
  "frame-support 40.1.0",
  "frame-system 40.2.0",
  "pallet-asset-conversion 22.0.0",
@@ -1302,7 +1302,7 @@ version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac2e40804e149007d05af1180319b524966fb810cf38f7b52e2f5af972f4521e"
 dependencies = [
- "cumulus-primitives-core",
+ "cumulus-primitives-core 0.18.1",
  "frame-support 40.1.0",
  "impl-trait-for-tuples",
  "pallet-asset-conversion 22.0.0",
@@ -2179,7 +2179,7 @@ version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "69ccce8944027677327dab0d7e79ce36459b520b3607aa24df686615b04cb4f2"
 dependencies = [
- "cumulus-primitives-core",
+ "cumulus-primitives-core 0.18.1",
  "frame-support 40.1.0",
  "pallet-message-queue",
  "parity-scale-codec",
@@ -3104,14 +3104,14 @@ checksum = "ea17f697c38c2556116479c9109965d78f35232b0a98e0227cfcc9716e35b56e"
 dependencies = [
  "cumulus-client-consensus-common",
  "cumulus-client-network",
- "cumulus-primitives-core",
+ "cumulus-primitives-core 0.18.1",
  "futures",
  "parity-scale-codec",
  "parking_lot 0.12.5",
  "polkadot-node-primitives",
  "polkadot-node-subsystem",
  "polkadot-overseer",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "sc-client-api",
  "sp-api 36.0.1",
  "sp-consensus",
@@ -3132,7 +3132,7 @@ dependencies = [
  "cumulus-client-consensus-proposer",
  "cumulus-client-parachain-inherent",
  "cumulus-primitives-aura",
- "cumulus-primitives-core",
+ "cumulus-primitives-core 0.18.1",
  "cumulus-relay-chain-interface",
  "futures",
  "parity-scale-codec",
@@ -3141,7 +3141,7 @@ dependencies = [
  "polkadot-node-subsystem",
  "polkadot-node-subsystem-util",
  "polkadot-overseer",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "sc-client-api",
  "sc-consensus",
  "sc-consensus-aura",
@@ -3176,13 +3176,13 @@ checksum = "f4e314992d34f5fb48119271a79c844b0a00cc582c62168091b239ecbc91afb2"
 dependencies = [
  "async-trait",
  "cumulus-client-pov-recovery",
- "cumulus-primitives-core",
+ "cumulus-primitives-core 0.18.1",
  "cumulus-relay-chain-interface",
  "dyn-clone",
  "futures",
  "log",
  "parity-scale-codec",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "sc-client-api",
  "sc-consensus",
  "sc-consensus-babe",
@@ -3223,7 +3223,7 @@ checksum = "632d69347deca4263418571035d35c95cd4fc2d5d171a403cc28852fc3ccb172"
 dependencies = [
  "async-trait",
  "cumulus-client-consensus-common",
- "cumulus-primitives-core",
+ "cumulus-primitives-core 0.18.1",
  "cumulus-relay-chain-interface",
  "futures",
  "parking_lot 0.12.5",
@@ -3254,7 +3254,7 @@ dependencies = [
  "polkadot-node-primitives",
  "polkadot-node-subsystem",
  "polkadot-parachain-primitives 16.1.0",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "sc-client-api",
  "sp-api 36.0.1",
  "sp-blockchain",
@@ -3273,7 +3273,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0bf1490c33f8d73aa4068d9431309e2f5dd7d803a5b85ab2eb87133e7e32cdfa"
 dependencies = [
  "async-trait",
- "cumulus-primitives-core",
+ "cumulus-primitives-core 0.18.1",
  "cumulus-primitives-parachain-inherent",
  "cumulus-relay-chain-interface",
  "cumulus-test-relay-sproof-builder",
@@ -3294,7 +3294,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7402bf96661e135d995b2466c52d3645dbcfe12883bb32436d896ddb8bfe96f6"
 dependencies = [
  "async-trait",
- "cumulus-primitives-core",
+ "cumulus-primitives-core 0.18.1",
  "cumulus-relay-chain-interface",
  "futures",
  "futures-timer",
@@ -3302,7 +3302,7 @@ dependencies = [
  "polkadot-node-primitives",
  "polkadot-node-subsystem",
  "polkadot-overseer",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "rand 0.8.5",
  "sc-client-api",
  "sc-consensus",
@@ -3325,13 +3325,13 @@ dependencies = [
  "cumulus-client-consensus-common",
  "cumulus-client-network",
  "cumulus-client-pov-recovery",
- "cumulus-primitives-core",
+ "cumulus-primitives-core 0.18.1",
  "cumulus-primitives-proof-size-hostfunction",
  "cumulus-relay-chain-inprocess-interface",
  "cumulus-relay-chain-interface",
  "cumulus-relay-chain-minimal-node",
  "futures",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "sc-client-api",
  "sc-consensus",
  "sc-network",
@@ -3376,7 +3376,7 @@ version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac09617f1e8078715e34052581ec198a42944c971af4ac8482a7ba4d77f7ac25"
 dependencies = [
- "cumulus-primitives-core",
+ "cumulus-primitives-core 0.18.1",
  "frame-benchmarking 40.2.1",
  "frame-support 40.1.0",
  "frame-system 40.2.0",
@@ -3396,7 +3396,7 @@ checksum = "5e3eab3409f29ea088aa016e8e45e246d3630277c0e4b37d7c55aa5ef7aaab2a"
 dependencies = [
  "bytes",
  "cumulus-pallet-parachain-system-proc-macro",
- "cumulus-primitives-core",
+ "cumulus-primitives-core 0.18.1",
  "cumulus-primitives-parachain-inherent",
  "cumulus-primitives-proof-size-hostfunction",
  "environmental",
@@ -3461,7 +3461,7 @@ dependencies = [
  "frame-system 40.2.0",
  "pallet-sudo 40.0.0",
  "parity-scale-codec",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "scale-info",
  "sp-runtime 41.1.0",
 ]
@@ -3492,7 +3492,7 @@ version = "0.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a322a86f98d2c7dfaaa787de92568cd776873dfa78339d27ccb14e85631838dc"
 dependencies = [
- "cumulus-primitives-core",
+ "cumulus-primitives-core 0.18.1",
  "frame-support 40.1.0",
  "frame-system 40.2.0",
  "parity-scale-codec",
@@ -3510,7 +3510,7 @@ checksum = "229345265f5551d2b0fdba0f44a1ef85c907b5f4cf47aefc70a17ca70538b719"
 dependencies = [
  "bounded-collections 0.2.4",
  "bp-xcm-bridge-hub-router",
- "cumulus-primitives-core",
+ "cumulus-primitives-core 0.18.1",
  "frame-benchmarking 40.2.1",
  "frame-support 40.1.0",
  "frame-system 40.2.0",
@@ -3535,7 +3535,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "83559ce5f74bd228d2e5002bdb8cb94b8701d18ef456199bd199222b993e474d"
 dependencies = [
  "cumulus-pallet-xcm",
- "cumulus-primitives-core",
+ "cumulus-primitives-core 0.18.1",
  "frame-support 40.1.0",
  "frame-system 40.2.0",
  "parity-scale-codec",
@@ -3563,12 +3563,30 @@ dependencies = [
  "parity-scale-codec",
  "polkadot-core-primitives 17.1.0",
  "polkadot-parachain-primitives 16.1.0",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "scale-info",
  "sp-api 36.0.1",
  "sp-runtime 41.1.0",
  "sp-trie 39.1.0",
  "staging-xcm 16.2.0",
+]
+
+[[package]]
+name = "cumulus-primitives-core"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2534e4bc9829e463e4d65dc7429c7b78a4e71b43dd58ecf8493ec9a5d2e57860"
+dependencies = [
+ "parity-scale-codec",
+ "polkadot-core-primitives 20.0.0",
+ "polkadot-parachain-primitives 19.0.0",
+ "polkadot-primitives 21.0.0",
+ "scale-info",
+ "sp-api 39.0.0",
+ "sp-runtime 44.0.0",
+ "sp-trie 41.1.0",
+ "staging-xcm 19.0.0",
+ "tracing",
 ]
 
 [[package]]
@@ -3578,7 +3596,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "56c8bb6be20c760997a62ee067fc63be701b15cac32adc8526f0eefc4623a887"
 dependencies = [
  "async-trait",
- "cumulus-primitives-core",
+ "cumulus-primitives-core 0.18.1",
  "parity-scale-codec",
  "scale-info",
  "sp-core 36.1.0",
@@ -3603,7 +3621,7 @@ version = "11.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9d8465f3343113ad397e83e45b1fc968d9cd0f5946583291974c072f84700712"
 dependencies = [
- "cumulus-primitives-core",
+ "cumulus-primitives-core 0.18.1",
  "cumulus-primitives-proof-size-hostfunction",
  "docify",
  "frame-benchmarking 40.2.1",
@@ -3621,7 +3639,7 @@ version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fa2c510928cf69deb096c6a487957f9b25b1dd05e5538c3eb572b153e893ee6e"
 dependencies = [
- "cumulus-primitives-core",
+ "cumulus-primitives-core 0.18.1",
  "sp-inherents 36.0.0",
  "sp-timestamp 36.0.0",
 ]
@@ -3632,7 +3650,7 @@ version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "075080c08260cf07ca74b2029039d81b84748d2e95dce3415c3ac5795494db18"
 dependencies = [
- "cumulus-primitives-core",
+ "cumulus-primitives-core 0.18.1",
  "frame-support 40.1.0",
  "log",
  "pallet-asset-conversion 22.0.0",
@@ -3651,7 +3669,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6f7619c7cadb3bc26b345bebbd95da9658931b978d5355bcf8f7340ac1b863d"
 dependencies = [
  "async-trait",
- "cumulus-primitives-core",
+ "cumulus-primitives-core 0.18.1",
  "cumulus-relay-chain-interface",
  "futures",
  "futures-timer",
@@ -3676,7 +3694,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "87238c5a990b8c3e44a4943144b0cdc81356163e5d91705209fe9c0f6f6af9aa"
 dependencies = [
  "async-trait",
- "cumulus-primitives-core",
+ "cumulus-primitives-core 0.18.1",
  "futures",
  "jsonrpsee-core",
  "parity-scale-codec",
@@ -3697,7 +3715,7 @@ checksum = "5bda0e2b753d394042da2b86a17d1ee4c67cf0f71b4a6190ed6d6134d0ea3e50"
 dependencies = [
  "array-bytes",
  "async-trait",
- "cumulus-primitives-core",
+ "cumulus-primitives-core 0.18.1",
  "cumulus-relay-chain-interface",
  "cumulus-relay-chain-rpc-interface",
  "futures",
@@ -3706,7 +3724,7 @@ dependencies = [
  "polkadot-node-network-protocol",
  "polkadot-node-subsystem-util",
  "polkadot-overseer",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "polkadot-service",
  "sc-authority-discovery",
  "sc-client-api",
@@ -3731,7 +3749,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b34a3eb5e656b8b6d3e5b4ee0b381a9145bfb86a0a3b0bf8697a8e697b317772"
 dependencies = [
  "async-trait",
- "cumulus-primitives-core",
+ "cumulus-primitives-core 0.18.1",
  "cumulus-relay-chain-interface",
  "either",
  "futures",
@@ -3750,7 +3768,7 @@ dependencies = [
  "serde_json",
  "smoldot 0.11.0",
  "smoldot-light 0.9.0",
- "sp-authority-discovery",
+ "sp-authority-discovery 36.0.0",
  "sp-consensus-babe 0.42.1",
  "sp-core 36.1.0",
  "sp-runtime 41.1.0",
@@ -3771,9 +3789,9 @@ version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d1bf30f2eed8f8bfd89e65d52395d124d45caa4ccd90a7e1326bb2fb7ac347b2"
 dependencies = [
- "cumulus-primitives-core",
+ "cumulus-primitives-core 0.18.1",
  "parity-scale-codec",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "sp-runtime 41.1.0",
  "sp-state-machine 0.45.0",
  "sp-trie 39.1.0",
@@ -4411,7 +4429,7 @@ dependencies = [
  "bp-xcm-bridge-hub",
  "cumulus-pallet-parachain-system",
  "cumulus-pallet-xcmp-queue",
- "cumulus-primitives-core",
+ "cumulus-primitives-core 0.18.1",
  "frame-support 40.1.0",
  "frame-system 40.2.0",
  "hex-literal",
@@ -4426,10 +4444,10 @@ dependencies = [
  "parity-scale-codec",
  "paste",
  "polkadot-parachain-primitives 16.1.0",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "polkadot-runtime-parachains",
  "sc-consensus-grandpa",
- "sp-authority-discovery",
+ "sp-authority-discovery 36.0.0",
  "sp-consensus-babe 0.42.1",
  "sp-consensus-beefy",
  "sp-core 36.1.0",
@@ -5040,7 +5058,7 @@ dependencies = [
  "log",
  "parity-scale-codec",
  "polkadot-parachain-primitives 16.1.0",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "rand 0.8.5",
  "rand_pcg",
  "sc-block-builder",
@@ -6273,12 +6291,13 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
-version = "0.16.0"
+version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5419bdc4f6a9207fbeba6d11b604d481addf78ecd10c11ad51e76c2f6482748d"
+checksum = "841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100"
 dependencies = [
  "foldhash 0.2.0",
  "serde",
+ "serde_core",
 ]
 
 [[package]]
@@ -6772,6 +6791,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 
 [[package]]
+name = "identit-parachain"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "color-print",
+ "docify",
+ "futures",
+ "jsonrpsee",
+ "log",
+ "pallet-credential-governance",
+ "pallet-identity-registry",
+ "pallet-verifiable-credentials",
+ "pallet-xcm-credentials",
+ "pallet-zk-credentials",
+ "polkadot-sdk 2503.2.0",
+ "serde",
+ "sp-core 37.0.0",
+ "substrate-prometheus-endpoint 0.17.7",
+]
+
+[[package]]
 name = "idna"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6939,7 +6979,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6717a8d2a5a929a1a2eb43a12812498ed141a0bcfb7e8f7844fbdbe4303bba9f"
 dependencies = [
  "equivalent",
- "hashbrown 0.16.0",
+ "hashbrown 0.16.1",
  "serde",
  "serde_core",
 ]
@@ -9374,7 +9414,7 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "sp-application-crypto 40.1.0",
- "sp-authority-discovery",
+ "sp-authority-discovery 36.0.0",
  "sp-runtime 41.1.0",
 ]
 
@@ -9793,7 +9833,7 @@ dependencies = [
  "pallet-xcm 19.2.2",
  "parity-scale-codec",
  "polkadot-parachain-primitives 16.1.0",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "polkadot-runtime-parachains",
  "scale-info",
  "sp-api 36.0.1",
@@ -10747,7 +10787,7 @@ dependencies = [
  "pallet-xcm 19.2.2",
  "parity-scale-codec",
  "polkadot-parachain-primitives 16.1.0",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "polkadot-runtime-parachains",
  "scale-info",
  "sp-core 36.1.0",
@@ -11540,6 +11580,7 @@ name = "pallet-xcm-credentials"
 version = "0.1.0"
 dependencies = [
  "cumulus-pallet-parachain-system",
+ "cumulus-primitives-core 0.21.0",
  "frame-executive 41.0.0",
  "frame-support 41.0.0",
  "frame-system 41.0.0",
@@ -11576,26 +11617,6 @@ dependencies = [
  "sp-io 41.0.1",
  "sp-runtime 42.0.0",
  "sp-std 14.0.0 (git+https://github.com/paritytech/polkadot-sdk?tag=polkadot-v1.19.0)",
-]
-
-[[package]]
-name = "parachain-template-node"
-version = "0.1.0"
-dependencies = [
- "clap",
- "color-print",
- "docify",
- "futures",
- "jsonrpsee",
- "log",
- "pallet-credential-governance",
- "pallet-identity-registry",
- "pallet-verifiable-credentials",
- "pallet-xcm-credentials",
- "pallet-zk-credentials",
- "polkadot-sdk 2503.2.0",
- "serde",
- "substrate-prometheus-endpoint 0.17.7",
 ]
 
 [[package]]
@@ -11651,7 +11672,7 @@ version = "21.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97b32bf9e055a2ec4aab91bd936c901a17caf8c82e35cc9bf2e97840bfa5e6d5"
 dependencies = [
- "cumulus-primitives-core",
+ "cumulus-primitives-core 0.18.1",
  "cumulus-primitives-utility",
  "frame-support 40.1.0",
  "frame-system 40.2.0",
@@ -11664,7 +11685,7 @@ dependencies = [
  "pallet-message-queue",
  "pallet-xcm 19.2.2",
  "parity-scale-codec",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "scale-info",
  "sp-consensus-aura 0.42.0",
  "sp-core 36.1.0",
@@ -11683,7 +11704,7 @@ checksum = "cc24be9ea2d120b524a4a262a5b6831a720292dfa1252099ae3e5a7846d1d7da"
 dependencies = [
  "cumulus-pallet-parachain-system",
  "cumulus-pallet-xcmp-queue",
- "cumulus-primitives-core",
+ "cumulus-primitives-core 0.18.1",
  "cumulus-primitives-parachain-inherent",
  "cumulus-test-relay-sproof-builder",
  "frame-support 40.1.0",
@@ -12084,7 +12105,7 @@ dependencies = [
  "polkadot-node-primitives",
  "polkadot-node-subsystem",
  "polkadot-node-subsystem-util",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "rand 0.8.5",
  "tracing-gum",
 ]
@@ -12100,7 +12121,7 @@ dependencies = [
  "polkadot-node-network-protocol",
  "polkadot-node-subsystem",
  "polkadot-node-subsystem-util",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "rand 0.8.5",
  "tracing-gum",
 ]
@@ -12119,7 +12140,7 @@ dependencies = [
  "polkadot-node-primitives",
  "polkadot-node-subsystem",
  "polkadot-node-subsystem-util",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "rand 0.8.5",
  "sc-network",
  "schnellru",
@@ -12144,7 +12165,7 @@ dependencies = [
  "polkadot-node-primitives",
  "polkadot-node-subsystem",
  "polkadot-node-subsystem-util",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "rand 0.8.5",
  "sc-network",
  "schnellru",
@@ -12202,7 +12223,7 @@ dependencies = [
  "polkadot-node-primitives",
  "polkadot-node-subsystem",
  "polkadot-node-subsystem-util",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "schnellru",
  "sp-core 36.1.0",
  "sp-keystore 0.42.0",
@@ -12263,7 +12284,7 @@ dependencies = [
  "polkadot-node-primitives",
  "polkadot-node-subsystem",
  "polkadot-node-subsystem-util",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "sc-network",
  "sp-application-crypto 40.1.0",
  "sp-keystore 0.42.0",
@@ -12279,7 +12300,7 @@ checksum = "c6ca21ac0a13df6cc98ac44ae16e1bd270979d75094671db110a80c5e8ca1c47"
 dependencies = [
  "parity-scale-codec",
  "polkadot-node-primitives",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "reed-solomon-novelpoly",
  "sp-core 36.1.0",
  "sp-trie 39.1.0",
@@ -12297,7 +12318,7 @@ dependencies = [
  "polkadot-node-network-protocol",
  "polkadot-node-subsystem",
  "polkadot-node-subsystem-util",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
  "sc-network",
@@ -12325,7 +12346,7 @@ dependencies = [
  "polkadot-node-network-protocol",
  "polkadot-node-subsystem",
  "polkadot-overseer",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "sc-network",
  "sp-consensus",
  "thiserror 1.0.69",
@@ -12344,7 +12365,7 @@ dependencies = [
  "polkadot-node-primitives",
  "polkadot-node-subsystem",
  "polkadot-node-subsystem-util",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "schnellru",
  "sp-core 36.1.0",
  "thiserror 1.0.69",
@@ -12369,7 +12390,7 @@ dependencies = [
  "polkadot-node-subsystem",
  "polkadot-node-subsystem-util",
  "polkadot-overseer",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
  "rand_core 0.6.4",
@@ -12401,7 +12422,7 @@ dependencies = [
  "polkadot-node-subsystem",
  "polkadot-node-subsystem-util",
  "polkadot-overseer",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "rand 0.8.5",
  "rand_core 0.6.4",
  "sc-keystore",
@@ -12423,7 +12444,7 @@ dependencies = [
  "polkadot-node-primitives",
  "polkadot-node-subsystem",
  "polkadot-node-subsystem-util",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "sp-consensus",
  "thiserror 1.0.69",
  "tracing-gum",
@@ -12443,7 +12464,7 @@ dependencies = [
  "polkadot-node-subsystem",
  "polkadot-node-subsystem-util",
  "polkadot-parachain-primitives 16.1.0",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "polkadot-statement-table",
  "schnellru",
  "sp-keystore 0.42.0",
@@ -12460,7 +12481,7 @@ dependencies = [
  "futures",
  "polkadot-node-subsystem",
  "polkadot-node-subsystem-util",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "sp-keystore 0.42.0",
  "thiserror 1.0.69",
  "tracing-gum",
@@ -12484,7 +12505,7 @@ dependencies = [
  "polkadot-node-subsystem-util",
  "polkadot-overseer",
  "polkadot-parachain-primitives 16.1.0",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "sp-application-crypto 40.1.0",
  "sp-keystore 0.42.0",
  "tracing-gum",
@@ -12517,7 +12538,7 @@ dependencies = [
  "polkadot-node-primitives",
  "polkadot-node-subsystem",
  "polkadot-node-subsystem-util",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "thiserror 1.0.69",
  "tracing-gum",
 ]
@@ -12534,7 +12555,7 @@ dependencies = [
  "polkadot-node-primitives",
  "polkadot-node-subsystem",
  "polkadot-node-subsystem-util",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "sc-keystore",
  "schnellru",
  "thiserror 1.0.69",
@@ -12552,7 +12573,7 @@ dependencies = [
  "futures-timer",
  "polkadot-node-subsystem",
  "polkadot-overseer",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "sp-blockchain",
  "sp-inherents 36.0.0",
  "thiserror 1.0.69",
@@ -12569,7 +12590,7 @@ dependencies = [
  "futures",
  "polkadot-node-subsystem",
  "polkadot-node-subsystem-util",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "thiserror 1.0.69",
  "tracing-gum",
 ]
@@ -12587,7 +12608,7 @@ dependencies = [
  "polkadot-node-primitives",
  "polkadot-node-subsystem",
  "polkadot-node-subsystem-util",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "thiserror 1.0.69",
  "tracing-gum",
 ]
@@ -12609,7 +12630,7 @@ dependencies = [
  "polkadot-node-primitives",
  "polkadot-node-subsystem",
  "polkadot-parachain-primitives 16.1.0",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "rand 0.8.5",
  "sc-tracing",
  "slotmap",
@@ -12630,7 +12651,7 @@ dependencies = [
  "futures",
  "polkadot-node-subsystem",
  "polkadot-node-subsystem-util",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "sp-keystore 0.42.0",
  "tracing-gum",
 ]
@@ -12648,7 +12669,7 @@ dependencies = [
  "nix 0.29.0",
  "parity-scale-codec",
  "polkadot-parachain-primitives 16.1.0",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "sc-executor",
  "sc-executor-common",
  "sc-executor-wasmtime",
@@ -12676,7 +12697,7 @@ dependencies = [
  "polkadot-node-core-pvf-common",
  "polkadot-node-primitives",
  "polkadot-parachain-primitives 16.1.0",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "sp-maybe-compressed-blob",
  "tracing-gum",
 ]
@@ -12693,7 +12714,7 @@ dependencies = [
  "nix 0.29.0",
  "parity-scale-codec",
  "polkadot-node-core-pvf-common",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "sp-maybe-compressed-blob",
  "staging-tracking-allocator",
  "tikv-jemalloc-ctl",
@@ -12711,7 +12732,7 @@ dependencies = [
  "polkadot-node-metrics",
  "polkadot-node-subsystem",
  "polkadot-node-subsystem-types",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "schnellru",
  "sp-consensus-babe 0.42.1",
  "tracing-gum",
@@ -12727,7 +12748,7 @@ dependencies = [
  "futures",
  "futures-timer",
  "parity-scale-codec",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "prioritized-metered-channel",
  "sc-cli",
  "sc-service",
@@ -12750,7 +12771,7 @@ dependencies = [
  "hex",
  "parity-scale-codec",
  "polkadot-node-primitives",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "rand 0.8.5",
  "sc-authority-discovery",
  "sc-network",
@@ -12773,7 +12794,7 @@ dependencies = [
  "futures-timer",
  "parity-scale-codec",
  "polkadot-parachain-primitives 16.1.0",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "sc-keystore",
  "schnorrkel 0.11.5",
  "serde",
@@ -12809,7 +12830,7 @@ dependencies = [
  "orchestra",
  "polkadot-node-network-protocol",
  "polkadot-node-primitives",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "polkadot-statement-table",
  "sc-client-api",
  "sc-network",
@@ -12817,7 +12838,7 @@ dependencies = [
  "sc-transaction-pool-api",
  "smallvec",
  "sp-api 36.0.1",
- "sp-authority-discovery",
+ "sp-authority-discovery 36.0.0",
  "sp-blockchain",
  "sp-consensus-babe 0.42.1",
  "sp-runtime 41.1.0",
@@ -12845,7 +12866,7 @@ dependencies = [
  "polkadot-node-subsystem",
  "polkadot-node-subsystem-types",
  "polkadot-overseer",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "prioritized-metered-channel",
  "rand 0.8.5",
  "sc-client-api",
@@ -12876,7 +12897,7 @@ dependencies = [
  "cumulus-client-parachain-inherent",
  "cumulus-client-service",
  "cumulus-primitives-aura",
- "cumulus-primitives-core",
+ "cumulus-primitives-core 0.18.1",
  "cumulus-relay-chain-interface",
  "docify",
  "frame-benchmarking 40.2.1",
@@ -12894,7 +12915,7 @@ dependencies = [
  "parachains-common",
  "parity-scale-codec",
  "polkadot-cli",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "sc-basic-authorship",
  "sc-chain-spec",
  "sc-cli",
@@ -12954,7 +12975,7 @@ dependencies = [
  "polkadot-node-network-protocol",
  "polkadot-node-primitives",
  "polkadot-node-subsystem-types",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "sc-client-api",
  "sp-core 36.1.0",
  "tikv-jemalloc-ctl",
@@ -13030,7 +13051,7 @@ dependencies = [
  "sp-api 36.0.1",
  "sp-application-crypto 40.1.0",
  "sp-arithmetic 26.1.0",
- "sp-authority-discovery",
+ "sp-authority-discovery 36.0.0",
  "sp-consensus-slots 0.42.1",
  "sp-core 36.1.0",
  "sp-inherents 36.0.0",
@@ -13038,6 +13059,36 @@ dependencies = [
  "sp-keystore 0.42.0",
  "sp-runtime 41.1.0",
  "sp-staking 38.0.0",
+ "sp-std 14.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "polkadot-primitives"
+version = "21.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1aa26e15b638b6078c70e51f66b1fe857610e5a702cc9d43661652d432e9c31a"
+dependencies = [
+ "bitvec",
+ "bounded-collections 0.3.2",
+ "hex-literal",
+ "log",
+ "parity-scale-codec",
+ "polkadot-core-primitives 20.0.0",
+ "polkadot-parachain-primitives 19.0.0",
+ "scale-info",
+ "serde",
+ "sp-api 39.0.0",
+ "sp-application-crypto 43.0.0",
+ "sp-arithmetic 28.0.0",
+ "sp-authority-discovery 39.0.0",
+ "sp-consensus-slots 0.45.0",
+ "sp-core 38.1.0",
+ "sp-inherents 39.0.0",
+ "sp-io 43.0.0",
+ "sp-keystore 0.44.1",
+ "sp-runtime 44.0.0",
+ "sp-staking 41.0.0",
  "sp-std 14.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror 1.0.69",
 ]
@@ -13051,7 +13102,7 @@ dependencies = [
  "jsonrpsee",
  "mmr-rpc",
  "pallet-transaction-payment-rpc",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "sc-chain-spec",
  "sc-client-api",
  "sc-consensus-babe",
@@ -13106,7 +13157,7 @@ dependencies = [
  "pallet-treasury",
  "pallet-vesting",
  "parity-scale-codec",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "polkadot-runtime-parachains",
  "rustc-hex",
  "scale-info",
@@ -13136,7 +13187,7 @@ dependencies = [
  "bs58",
  "frame-benchmarking 40.2.1",
  "parity-scale-codec",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "sp-tracing 17.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -13166,7 +13217,7 @@ dependencies = [
  "parity-scale-codec",
  "polkadot-core-primitives 17.1.0",
  "polkadot-parachain-primitives 16.1.0",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "polkadot-runtime-metrics",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
@@ -13239,7 +13290,7 @@ dependencies = [
  "cumulus-pallet-xcmp-queue",
  "cumulus-ping",
  "cumulus-primitives-aura",
- "cumulus-primitives-core",
+ "cumulus-primitives-core 0.18.1",
  "cumulus-primitives-parachain-inherent",
  "cumulus-primitives-proof-size-hostfunction",
  "cumulus-primitives-storage-weight-reclaim",
@@ -13420,7 +13471,7 @@ dependencies = [
  "polkadot-omni-node-lib",
  "polkadot-overseer",
  "polkadot-parachain-primitives 16.1.0",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "polkadot-rpc",
  "polkadot-runtime-common",
  "polkadot-runtime-metrics",
@@ -13487,7 +13538,7 @@ dependencies = [
  "sp-api-proc-macro 22.0.1",
  "sp-application-crypto 40.1.0",
  "sp-arithmetic 26.1.0",
- "sp-authority-discovery",
+ "sp-authority-discovery 36.0.0",
  "sp-block-builder 36.0.0",
  "sp-blockchain",
  "sp-consensus",
@@ -13649,7 +13700,7 @@ dependencies = [
  "polkadot-node-subsystem-types",
  "polkadot-node-subsystem-util",
  "polkadot-overseer",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "polkadot-rpc",
  "polkadot-runtime-parachains",
  "polkadot-statement-distribution",
@@ -13677,7 +13728,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sp-api 36.0.1",
- "sp-authority-discovery",
+ "sp-authority-discovery 36.0.0",
  "sp-block-builder 36.0.0",
  "sp-blockchain",
  "sp-consensus",
@@ -13722,7 +13773,7 @@ dependencies = [
  "polkadot-node-primitives",
  "polkadot-node-subsystem",
  "polkadot-node-subsystem-util",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "sp-keystore 0.42.0",
  "sp-staking 38.0.0",
  "thiserror 1.0.69",
@@ -13736,7 +13787,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ea6d47fecf55aba37980922e8eff6d13667ca20ac1969637c220770a033d81f1"
 dependencies = [
  "parity-scale-codec",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "tracing-gum",
 ]
 
@@ -15213,7 +15264,7 @@ dependencies = [
  "pallet-xcm-benchmarks",
  "parity-scale-codec",
  "polkadot-parachain-primitives 16.1.0",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "polkadot-runtime-common",
  "polkadot-runtime-parachains",
  "rococo-runtime-constants",
@@ -15223,7 +15274,7 @@ dependencies = [
  "serde_json",
  "sp-api 36.0.1",
  "sp-arithmetic 26.1.0",
- "sp-authority-discovery",
+ "sp-authority-discovery 36.0.0",
  "sp-block-builder 36.0.0",
  "sp-consensus-babe 0.42.1",
  "sp-consensus-beefy",
@@ -15255,7 +15306,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c295ecea37ee949577dba8dfef7beb3de5492bb88bbbec6b0dc327ff63ee85b0"
 dependencies = [
  "frame-support 40.1.0",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "polkadot-runtime-common",
  "smallvec",
  "sp-core 36.1.0",
@@ -15699,7 +15750,7 @@ dependencies = [
  "sc-network",
  "sc-network-types",
  "sp-api 36.0.1",
- "sp-authority-discovery",
+ "sp-authority-discovery 36.0.0",
  "sp-blockchain",
  "sp-core 36.1.0",
  "sp-keystore 0.42.0",
@@ -18417,6 +18468,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp-authority-discovery"
+version = "39.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "371762212dd2ecf361913297bbc93f291bb2a020b9c483dcd1a220eb5410c324"
+dependencies = [
+ "parity-scale-codec",
+ "scale-info",
+ "sp-api 39.0.0",
+ "sp-application-crypto 43.0.0",
+ "sp-runtime 44.0.0",
+]
+
+[[package]]
 name = "sp-block-builder"
 version = "36.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -20488,7 +20552,7 @@ version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f67defdbfcd90bf9b8d4794d2287a27908e518d0540fe8a15bed7761eb07a7e3"
 dependencies = [
- "cumulus-primitives-core",
+ "cumulus-primitives-core 0.18.1",
  "frame-support 40.1.0",
  "frame-system 40.2.0",
  "parity-scale-codec",
@@ -21408,7 +21472,7 @@ version = "13.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b7f6796ca1e01e6d75615eb07083b2bf8a71f518c41c2e303c7568430c6aabe"
 dependencies = [
- "cumulus-primitives-core",
+ "cumulus-primitives-core 0.18.1",
  "frame-support 40.1.0",
  "polkadot-core-primitives 17.1.0",
  "rococo-runtime-constants",
@@ -21862,7 +21926,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3a8f8a5b9157a1a473ffc8f2395b828a4238ed4b15044a9f861573f98049418"
 dependencies = [
  "coarsetime",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "tracing",
  "tracing-gum-proc-macro",
 ]
@@ -22855,7 +22919,7 @@ dependencies = [
  "pallet-xcm-benchmarks",
  "parity-scale-codec",
  "polkadot-parachain-primitives 16.1.0",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "polkadot-runtime-common",
  "polkadot-runtime-parachains",
  "scale-info",
@@ -22865,7 +22929,7 @@ dependencies = [
  "sp-api 36.0.1",
  "sp-application-crypto 40.1.0",
  "sp-arithmetic 26.1.0",
- "sp-authority-discovery",
+ "sp-authority-discovery 36.0.0",
  "sp-block-builder 36.0.0",
  "sp-consensus-babe 0.42.1",
  "sp-consensus-beefy",
@@ -22899,7 +22963,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "353ec9fb34d2bea0e0dcf9132b47926eb3afcdacc52e3d75ffcf95c858d29c9d"
 dependencies = [
  "frame-support 40.1.0",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "polkadot-runtime-common",
  "smallvec",
  "sp-core 36.1.0",
@@ -23445,7 +23509,7 @@ checksum = "f4e20001018517e43a6cde8803da661767e9c95bcd5509abe227dddccc220813"
 dependencies = [
  "array-bytes",
  "cumulus-pallet-parachain-system",
- "cumulus-primitives-core",
+ "cumulus-primitives-core 0.18.1",
  "cumulus-primitives-parachain-inherent",
  "cumulus-test-relay-sproof-builder",
  "frame-support 40.1.0",
@@ -23459,7 +23523,7 @@ dependencies = [
  "parity-scale-codec",
  "paste",
  "polkadot-parachain-primitives 16.1.0",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "polkadot-runtime-parachains",
  "sp-arithmetic 26.1.0",
  "sp-core 36.1.0",
@@ -23541,7 +23605,7 @@ dependencies = [
  "paste",
  "polkadot-core-primitives 17.1.0",
  "polkadot-parachain-primitives 16.1.0",
- "polkadot-primitives",
+ "polkadot-primitives 18.2.0",
  "polkadot-runtime-parachains",
  "scale-info",
  "sp-io 40.0.1",
@@ -23637,18 +23701,18 @@ dependencies = [
 
 [[package]]
 name = "zerocopy"
-version = "0.8.27"
+version = "0.8.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0894878a5fa3edfd6da3f88c4805f4c8558e2b996227a3d864f47fe11e38282c"
+checksum = "43fa6694ed34d6e57407afbccdeecfa268c470a7d2a5b0cf49ce9fcc345afb90"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.8.27"
+version = "0.8.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "88d2b8d9c68ad2b9e4340d7832716a4d21a22a1154777ad56ea55c51a9cf3831"
+checksum = "c640b22cd9817fae95be82f0d2f90b11f7605f6c319d16705c459b27ac2cbc26"
 dependencies = [
  "proc-macro2",
  "quote",

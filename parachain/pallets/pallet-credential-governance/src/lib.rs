@@ -9,6 +9,9 @@ mod benchmarking;
 pub mod weights;
 use crate::weights::WeightInfo;
 
+#[cfg(feature = "std")]
+use serde::{Deserialize, Serialize};
+
 #[frame_support::pallet]
 pub mod pallet {
     use frame_support::{
@@ -56,6 +59,7 @@ pub mod pallet {
 
     /// Credential type for issuer authorization
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
     pub enum CredentialTypeAuth {
         Education,
         Health,

@@ -5,6 +5,9 @@ mod benchmarking;
 
 pub mod weights;
 
+#[cfg(feature = "std")]
+use serde::{Deserialize, Serialize};
+
 #[frame_support::pallet]
 pub mod pallet {
     use frame_support::{
@@ -19,7 +22,9 @@ pub mod pallet {
     use crate::weights::WeightInfo;
     use pallet_identity_registry::pallet::Pallet as IdentityRegistryPallet;
     use pallet_zk_credentials::pallet::Pallet as ZkCredentialsPallet;
+    use pallet_zk_credentials::ProofType as ZkProofType;
     use sp_runtime::traits::SaturatedConversion;
+    use sp_std::marker::PhantomData;
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
@@ -31,8 +36,26 @@ pub mod pallet {
         type WeightInfo: WeightInfo;
     }
 
+    #[pallet::genesis_config]
+    #[derive(frame_support::DefaultNoBound)]
+    pub struct GenesisConfig<T: Config> {
+        pub trusted_issuers: Vec<(H256, CredentialType)>,
+        #[serde(skip)]
+        pub _marker: PhantomData<T>,
+    }
+
+    #[pallet::genesis_build]
+    impl<T: Config> BuildGenesisConfig for GenesisConfig<T> {
+        fn build(&self) {
+            for (issuer, cred_type) in &self.trusted_issuers {
+                TrustedIssuers::<T>::insert((cred_type, issuer), true);
+            }
+        }
+    }
+
     /// Credential types
     #[derive(Clone, Encode, Decode, DecodeWithMemTracking, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
     pub enum CredentialType {
         Education,
         Health,
@@ -81,7 +104,7 @@ pub mod pallet {
     #[derive(Clone, Encode, Decode, DecodeWithMemTracking, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     pub struct DisclosureRequest {
         pub credential_id: H256,
-        pub fields_to_reveal: Vec<u32>,
+        pub fields_to_reveal: BoundedVec<u32, ConstU32<50>>,
         pub proof: H256,
     }
 
@@ -112,6 +135,17 @@ pub mod pallet {
         H256, 
         Credential<T>, 
         OptionQuery
+    >;
+
+    /// Storage: Map BlockNumber -> Vec<CredentialId>
+    #[pallet::storage]
+    #[pallet::getter(fn expiries)]
+    pub type Expiries<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u64, // Block number (derived from timestamp)
+        BoundedVec<H256, ConstU32<50>>, // Max 50 expiries per block
+        ValueQuery,
     >;
 
     /// Storage: Credentials owned by a DID
@@ -263,6 +297,32 @@ pub mod pallet {
     /// Voting period in blocks (7 days)
     const GOVERNANCE_VOTING_PERIOD_BLOCKS: u32 = 100_800;
 
+    #[pallet::hooks]
+    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+        /// Called at the beginning of every block
+        fn on_initialize(n: BlockNumberFor<T>) -> Weight {
+            // 1. Convert block number to timestamp (approximate) or just use block number
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
+            
+            // 2. Call the cleanup function
+            let items_removed = Self::cleanup_expired_credentials(now);
+            
+            // 3. Return the weight used
+            // (reads: 1 per block for Expiries + reads/writes per item removed)
+            let db_weight = T::DbWeight::get();
+            let base_weight = db_weight.reads(1); 
+            
+            let cleanup_weight = if items_removed > 0 {
+                // Cost per item: 1 read (credential), 2 writes (Subject/Issuer lists), 1 write (Credential remove)
+                db_weight.reads_writes(1, 3).saturating_mul(items_removed as u64)
+            } else {
+                Weight::zero()
+            };
+
+            base_weight.saturating_add(cleanup_weight)
+        }
+    }
+
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         /// Issue a new credential
@@ -277,29 +337,35 @@ pub mod pallet {
             signature: H256,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-
-            let (issuer_did, issuer_identity) = IdentityRegistryPallet::<T>::get_identity_by_account(&who).ok_or(Error::<T>::IssuerIdentityNotFound)?;
+            
+            // 1. Verify Issuer Identity
+            let (issuer_did, issuer_identity) = IdentityRegistryPallet::<T>::get_identity_by_account(&who)
+                .ok_or(Error::<T>::IssuerIdentityNotFound)?;
 
             ensure!(issuer_identity.active, Error::<T>::IssuerInactive);
 
+            // 2. Verify Subject Identity
             ensure!(
                 IdentityRegistryPallet::<T>::is_identity_active(&subject_did),
                 Error::<T>::SubjectIdentityNotFound
             );
 
+            // 3. Verify Issuer Trust for this Type
             ensure!(
                 TrustedIssuers::<T>::get((&credential_type, &issuer_did)),
                 Error::<T>::IssuerNotTrusted
             );
 
+            // 4. Validate Expiration
             ensure!(
                 Self::validate_expiration_timestamp(expires_at),
                 Error::<T>::InvalidCredentialStatus
             );
 
-            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
 
-            let credential = Credential {
+            // 5. Create Credential Object
+            let credential = Credential<T> {
                 subject: subject_did,
                 issuer: issuer_did,
                 credential_type: credential_type.clone(),
@@ -313,19 +379,38 @@ pub mod pallet {
 
             let credential_id = Self::generate_credential_id(&credential);
 
+            // 6. Insert into Storage
             Credentials::<T>::insert(&credential_id, credential);
 
+            // 7. Update Subject's List
             CredentialsOf::<T>::try_mutate(&subject_did, |creds| -> DispatchResult {
                 creds.try_push(credential_id)
                     .map_err(|_| Error::<T>::TooManyCredentials)?;
                 Ok(())
             })?;
 
+            // 8. Update Issuer's List
             IssuedBy::<T>::try_mutate(&issuer_did, |creds| -> DispatchResult {
                 creds.try_push(credential_id)
                     .map_err(|_| Error::<T>::TooManyCredentials)?;
                 Ok(())
             })?;
+
+            if expires_at > 0 {
+                // Convert timestamp (seconds) to approximate block number.
+                // Assuming 6 seconds per block: Block = Time / 6
+                // We cast to u64 for the key.
+                let expiry_block = expires_at / 6; 
+                
+                Expiries::<T>::try_mutate(expiry_block, |list| -> DispatchResult {
+                    // Try to add to the expiry list for this block
+                    // If the list is full (Max 50), this specific cleanup might fail, 
+                    // but we don't want to fail the whole transaction, so we ignore the error 
+                    // or you can choose to fail. Here we proceed to avoid blocking issuance.
+                    let _ = list.try_push(credential_id); 
+                    Ok(())
+                })?;
+            }
 
             Self::deposit_event(Event::CredentialIssued { 
                 credential_id, 
@@ -409,40 +494,50 @@ pub mod pallet {
         pub fn create_schema(
             origin: OriginFor<T>,
             credential_type: CredentialType,
-            fields: Vec<Vec<u8>>,
-            required_fields: Vec<bool>,
+            fields: Vec<Vec<u8>>,          // Input is standard Vec
+            required_fields: Vec<bool>,    // Input is standard Vec
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-
             let (creator_did, _) = IdentityRegistryPallet::<T>::get_identity_by_account(&who)
                 .ok_or(Error::<T>::IssuerIdentityNotFound)?;
 
-            ensure!(
-                Self::validate_schema_params(&fields, &required_fields),
-                Error::<T>::InvalidSchema
-            );
+            // Convert `fields` (Vec<Vec<u8>>) -> BoundedVec<BoundedVec<u8, 64>, 100>
+            let bounded_fields: BoundedVec<BoundedVec<u8, ConstU32<64>>, ConstU32<100>> = fields
+                .into_iter()
+                .map(|f| {
+                    // Check inner string length (max 64)
+                    let b: BoundedVec<u8, ConstU32<64>> = f.try_into()
+                        .map_err(|_| Error::<T>::InvalidSchema)?; 
+                    Ok(b)
+                })
+                .collect::<Result<Vec<_>, Error<T>>>()? // Collect results
+                .try_into() // Convert outer Vec to BoundedVec (max 100)
+                .map_err(|_| Error::<T>::InvalidSchema)?;
+
+            // Convert `required_fields` (Vec<bool>) -> BoundedVec<bool, 100>
+            let bounded_required: BoundedVec<bool, ConstU32<100>> = required_fields
+                .try_into()
+                .map_err(|_| Error::<T>::InvalidSchema)?;
+
+            // Validate logical consistency (lengths must match)
+            ensure!(bounded_fields.len() == bounded_required.len(), Error::<T>::InvalidSchema);
 
             let schema = CredentialSchema {
                 schema_id: H256::zero(),
                 credential_type,
-                fields,
-                required_fields,
+                fields: bounded_fields,
+                required_fields: bounded_required,
                 creator: creator_did,
             };
 
             let schema_id = Self::generate_schema_id(&schema);
             let mut schema_with_id = schema;
             schema_with_id.schema_id = schema_id;
-
-            ensure!(
-                !Schemas::<T>::contains_key(&schema_id),
-                Error::<T>::SchemaAlreadyExists 
-            );
-
+            
+            ensure!(!Schemas::<T>::contains_key(&schema_id), Error::<T>::SchemaAlreadyExists);
             Schemas::<T>::insert(&schema_id, schema_with_id);
-
+            
             Self::deposit_event(Event::SchemaCreated { schema_id, creator: creator_did });
-
             Ok(())
         }
 
@@ -557,9 +652,12 @@ pub mod pallet {
                 Error::<T>::SubjectIdentityNotFound
             );
 
+            let bounded_fields_to_reveal: BoundedVec<u32, ConstU32<50>> = 
+                fields_to_reveal.clone().try_into().map_err(|_| Error::<T>::TooManyFieldsRequested)?;
+
             let disclosure_request = SelectiveDisclosureRequest {
                 credential_id,
-                fields_to_reveal: fields_to_reveal.clone(),
+                fields_to_reveal: bounded_fields_to_reveal, // bounded version
                 proof,
                 timestamp: now,
             };
@@ -994,13 +1092,13 @@ pub mod pallet {
         }
 
         /// Convert ZkCredentialType to ProofType for lookup
-        fn zk_credential_type_to_proof_type(zk_type: &ZkCredentialType) -> ZkCredentialsPallet::ProofType {
+        fn zk_credential_type_to_proof_type(zk_type: &ZkCredentialType) -> pallet_zk_credentials::ProofType {
             match zk_type {
-                ZkCredentialType::StudentStatus => ZkCredentialsPallet::ProofType::StudentStatus,
-                ZkCredentialType::VaccinationStatus => ZkCredentialsPallet::ProofType::VaccinationStatus,
-                ZkCredentialType::EmploymentStatus => ZkCredentialsPallet::ProofType::EmploymentStatus,
-                ZkCredentialType::AgeVerification => ZkCredentialsPallet::ProofType::AgeAbove,
-                ZkCredentialType::Custom => ZkCredentialsPallet::ProofType::Custom,
+                ZkCredentialType::StudentStatus => pallet_zk_credentials::ProofType::StudentStatus,
+                ZkCredentialType::VaccinationStatus => pallet_zk_credentials::ProofType::VaccinationStatus,
+                ZkCredentialType::EmploymentStatus => pallet_zk_credentials::ProofType::EmploymentStatus,
+                ZkCredentialType::AgeVerification => pallet_zk_credentials::ProofType::AgeAbove,
+                ZkCredentialType::Custom => pallet_zk_credentials::ProofType::Custom,
             }
         }
     }
@@ -1013,19 +1111,37 @@ pub mod pallet {
             // Example: Update credential format to add new fields
         }
         
-        /// Clean up expired credentials (called periodically)
-        /// Frees storage by removing old credentials
-        pub fn cleanup_expired_credentials(max_to_cleanup: u32) -> u32 {
-            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
-            let mut count = 0u32;
+        /// Clean up expired credentials based on the Expiries queue
+        pub fn cleanup_expired_credentials(current_time_u64: u64) -> u32 {
+            // Convert current time to approximate block number
+            let current_block_approx = current_time_u64 / 6;
             
-            Credentials::<T>::iter().take(max_to_cleanup as usize).for_each(|(cred_id, cred)| {
-                if cred.expires_at > 0 && cred.expires_at < now {
-                    Credentials::<T>::remove(&cred_id);
-                    count = count.saturating_add(1);
+            // Take all IDs expiring at this specific time slot (removes them from Expiries map)
+            let expired_ids = Expiries::<T>::take(current_block_approx);
+            
+            let mut count = 0;
+            for cred_id in expired_ids {
+                // 1. Get the credential first so we know who owns it (Subject/Issuer)
+                if let Some(credential) = Credentials::<T>::take(&cred_id) {
+                    
+                    // 2. Remove from Subject's list (CredentialsOf)
+                    let _ = CredentialsOf::<T>::mutate(&credential.subject, |creds| {
+                        // BoundedVec doesn't always have 'retain', so we reconstruct or find_remove
+                        if let Some(pos) = creds.iter().position(|x| *x == cred_id) {
+                            creds.remove(pos);
+                        }
+                    });
+
+                    // 3. Remove from Issuer's list (IssuedBy)
+                    let _ = IssuedBy::<T>::mutate(&credential.issuer, |creds| {
+                        if let Some(pos) = creds.iter().position(|x| *x == cred_id) {
+                            creds.remove(pos);
+                        }
+                    });
+
+                    count += 1;
                 }
-            });
-            
+            }
             count
         }
     }
@@ -1090,7 +1206,7 @@ pub mod pallet {
             credential_type: CredentialType,
         ) -> H256 {
             let now = <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
-            let credential = Credential {
+            let credential = Credential<T> {
                 subject: subject_did,
                 issuer: issuer_did,
                 credential_type,

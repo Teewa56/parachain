@@ -15,20 +15,20 @@ pub mod pallet {
     use codec::Encode;
     use sp_std::vec::Vec;
     use sp_core::H256;
-    use xcm::v3::{
+    use xcm::latest::{
         Instruction,
-        Weight,
-        MultiLocation,
+        Location,
         Junction,
         Junctions,
         Xcm,
         OriginKind,
     };
-    use xcm::DoubleEncoded;
     use pallet_xcm::Pallet as XcmPallet;
     use frame_support::BoundedVec;
     use crate::weights::WeightInfo;
     use sp_runtime::traits::SaturatedConversion;
+    use sp_std::marker::PhantomData;
+    use xcm::prelude::SendXcm;
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
@@ -37,8 +37,36 @@ pub mod pallet {
     pub trait Config: frame_system::Config + pallet_xcm::Config {
         type TimeProvider: Time;
         type WeightInfo: WeightInfo;
+        type ParachainId: Get<cumulus_primitives_core::ParaId>; 
+        type XcmOriginToTransactDispatchOrigin: EnsureOrigin<Self::RuntimeOrigin, Success = Location>;
+        type ParachainIdentity: frame_support::traits::EnsureOrigin<<Self as frame_system::Config>::RuntimeOrigin, Success = Location>;
+        #[pallet::constant]
+        type DefaultXcmFee: Get<Weight>;
     }
 
+    #[pallet::genesis_config]
+    #[derive(frame_support::DefaultNoBound)]
+    pub struct GenesisConfig<T: Config> {
+        // List of trusted parachains [ParaId, TrustedBool]
+        pub registered_parachains: Vec<(u32, bool)>,
+        #[serde(skip)]
+        pub _marker: PhantomData<T>,
+    }
+
+    #[pallet::genesis_build]
+    impl<T: Config> BuildGenesisConfig for GenesisConfig<T> {
+        fn build(&self) {
+            for (para_id, trusted) in &self.registered_parachains {
+                let registry = ParachainRegistry {
+                    para_id: *para_id,
+                    trusted: *trusted,
+                    endpoint: None,
+                };
+                RegisteredParachains::<T>::insert(para_id, registry);
+            }
+        }
+    }
+    
     /// Cross-chain credential verification request
     #[derive(Clone, Encode, Decode, DecodeWithMemTracking, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     pub struct XcmCredentialRequest {
@@ -185,6 +213,7 @@ pub mod pallet {
         AlreadyExported,
         /// Too many verification responses
         TooManyResponses,
+        EncodingError,
     }
 
     #[pallet::call]
@@ -310,7 +339,10 @@ pub mod pallet {
             credential_hash: H256,
             credential_data: Vec<u8>,
         ) -> DispatchResult {
-            let _origin = ensure_root(origin)?;
+            let actual_para_id = Self::ensure_sibling_para(origin)?;
+    
+            // Ensure the sender isn't spoofing the ID
+            ensure!(actual_para_id == source_para_id, Error::<T>::InvalidXcmMessage);
 
             // Verify source parachain is trusted
             let registry = RegisteredParachains::<T>::get(source_para_id)
@@ -389,27 +421,28 @@ pub mod pallet {
             credential_hash: H256,
             request_hash: H256,
         ) -> DispatchResult {
-            let destination = MultiLocation {
-                parents: 1,
-                interior: Junctions::X1(Junction::Parachain(target_para_id)),
-            };
+            let destination = Location::new(
+                1, // parent = 1
+                [Junction::Parachain(target_para_id)]
+            );
 
             let encoded_call = Self::encode_verification_request_call(credential_hash, request_hash);
 
-            let double = DoubleEncoded::<()>::new(encoded_call);
-
+            let double = encoded_call.try_into().map_err(|_| Error::<T>::EncodingError)?;
             let message = Xcm(vec![
                 Instruction::Transact {
                     origin_kind: OriginKind::Native,
-                    require_weight_at_most: Weight::from_parts(1_000_000_000, 0),
+                    fallback_max_weight: {
+                        let fee = T::DefaultXcmFee::get();
+                        Some(xcm::v3::Weight::from_parts(fee.ref_time(), fee.proof_size()))
+                    },
                     call: double,
                 }
             ]);
 
-            XcmPallet::<T>::send_xcm(
-                destination,          // impl Into<Junctions>
-                destination.clone(),  // impl Into<Location>
-                message               // Xcm<>
+            <T as pallet_xcm::Config>::XcmRouter::send_xcm(
+                destination, 
+                message
             ).map_err(|_| Error::<T>::XcmSendFailed)?;
 
             Ok(())
@@ -421,30 +454,29 @@ pub mod pallet {
             credential_hash: H256,
             credential_data: Vec<u8>,
         ) -> DispatchResult {
-            let destination = MultiLocation {
-                parents: 1,
-                interior: Junctions::X1(Junction::Parachain(destination_para_id)),
-            };
+            let destination = Location::new(
+                1,
+                [Junction::Parachain(destination_para_id)]
+            );
 
             let source_para_id = Self::get_current_para_id();
-
             let encoded_call = Self::encode_import_credential_call(source_para_id, credential_hash, credential_data);
 
-            let double = DoubleEncoded::<()>::new(encoded_call);
-
+            let double = encoded_call.try_into().map_err(|_| Error::<T>::EncodingError)?;
             let message = Xcm(vec![
                 Instruction::Transact {
                     origin_kind: OriginKind::Native,
-                    require_weight_at_most: Weight::from_parts(1_000_000_000, 0),
+                    fallback_max_weight: {
+                        let fee = T::DefaultXcmFee::get();
+                        Some(xcm::v3::Weight::from_parts(fee.ref_time(), fee.proof_size()))
+                    },
                     call: double,
                 }
             ]);
 
-            // Send XCM
-            XcmPallet::<T>::send_xcm(
-                destination,          // impl Into<Junctions>
-                destination.clone(),  // impl Into<Location>
-                message               // Xcm<>
+            <T as pallet_xcm::Config>::XcmRouter::send_xcm(
+                destination, 
+                message
             ).map_err(|_| Error::<T>::XcmSendFailed)?;
 
             Ok(())
@@ -452,7 +484,7 @@ pub mod pallet {
 
         /// Get current parachain ID 
         fn get_current_para_id() -> u32 {
-            T::ParachainId::get()
+            <T as Config>::ParachainId::get().into()
         }
 
         /// Encode verification request call
@@ -484,6 +516,23 @@ pub mod pallet {
                 credential_data,
             )
             .encode()
+        }
+
+        fn ensure_sibling_para(origin: OriginFor<T>) -> Result<u32, Error<T>> {
+            // 1. Convert origin to Location
+            let location = T::ParachainIdentity::ensure_origin(origin)
+                .map_err(|_| Error::<T>::InvalidXcmMessage)?;
+
+            // 2. Match specific XCM V5 pattern
+            // We match X1(junctions_array), then look at the first item [0]
+            if let Location { parents: 1, interior: Junctions::X1(ref junctions) } = location {
+                // Check if the first junction is a Parachain ID
+                if let Junction::Parachain(id) = junctions[0] {
+                    return Ok(id);
+                }
+            }
+            
+            Err(Error::<T>::InvalidXcmMessage)
         }
 
         /// Check if credential is valid across chains

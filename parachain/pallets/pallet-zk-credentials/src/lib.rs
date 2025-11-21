@@ -6,7 +6,6 @@ pub use pallet::*;
 mod benchmarking;
 
 pub mod weights;
-use weights::WeightInfo;
 
 #[cfg(feature = "std")]
 use ark_serialize::CanonicalDeserialize;
@@ -26,6 +25,7 @@ pub mod pallet {
     use sp_core::H256;
     use sp_runtime::traits::SaturatedConversion;
     use frame_support::BoundedVec;
+    use crate::weights::WeightInfo;
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
@@ -193,15 +193,11 @@ pub mod pallet {
                 Error::<T>::ProofAlreadyVerified
             );
 
-            #[cfg(feature = "std")]
             let verification_result = Self::verify_groth16_proof(
                 &circuit_vk.vk_data,
                 &proof.proof_data,
                 &proof.public_inputs,
             );
-
-            #[cfg(not(feature = "std"))]
-            let verification_result: Result<bool, ()> = Ok(true);
 
             match verification_result {
                 Ok(true) => {
@@ -324,15 +320,12 @@ pub mod pallet {
             sp_io::hashing::blake2_256(&data).into()
         }
 
-        /// Verify a Groth16 proof using arkworks (only in std)
-        #[cfg(feature = "std")]
         fn verify_groth16_proof(
             vk_data: &[u8],
             proof_data: &[u8],
             public_inputs: &[BoundedVec<u8, ConstU32<64>>],
         ) -> Result<bool, ()> {
-            let vk = VerifyingKey::<Bn254>::deserialize_compressed(vk_data)
-                .map_err(|_| ())?;
+            let vk = VerifyingKey::<Bn254>::deserialize_compressed(vk_data).map_err(|_| ())?;
             
             let pvk = prepare_verifying_key(&vk);
 
@@ -348,7 +341,7 @@ pub mod pallet {
 
             let result = ark_groth16::Groth16::<Bn254>::verify_proof(&pvk, &proof, &inputs)
                 .map_err(|_| ())?;
-
+                
             Ok(result)
         }
 

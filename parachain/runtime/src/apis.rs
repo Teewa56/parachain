@@ -300,16 +300,23 @@ impl_runtime_apis! {
 	}
 
 	impl sp_genesis_builder::GenesisBuilder<Block> for Runtime {
-		fn build_state(config: Vec<u8>) -> sp_genesis_builder::Result {
-			build_state::<RuntimeGenesisConfig>(config)
-		}
-
-		fn get_preset(id: &Option<sp_genesis_builder::PresetId>) -> Option<Vec<u8>> {
-			get_preset::<RuntimeGenesisConfig>(id, crate::genesis_config_presets::get_preset)
-		}
-
 		fn preset_names() -> Vec<sp_genesis_builder::PresetId> {
-			crate::genesis_config_presets::preset_names()
-		}
+            vec![
+                sp_genesis_builder::DEV_RUNTIME_PRESET,
+                sp_genesis_builder::LOCAL_TESTNET_RUNTIME_PRESET,
+            ]
+        }
+
+        fn get_preset(id: &sp_genesis_builder::PresetId) -> Option<Vec<u8>> {
+            genesis_config_presets::get_preset(id)
+        }
+
+        fn build_state(config: Vec<u8>) -> sp_genesis_builder::Result {
+            let genesis_config: RuntimeGenesisConfig = serde_json::from_slice(&config)
+                .map_err(|e| format!("Failed to deserialize config: {}", e))?;
+
+            genesis_config.build_storage()
+                .map_err(|e| format!("Failed to build storage: {}", e))
+        }
 	}
 }

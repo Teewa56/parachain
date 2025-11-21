@@ -4,6 +4,8 @@ use parachain_template_runtime as runtime;
 use sc_chain_spec::{ChainSpecExtension, ChainSpecGroup};
 use sc_service::ChainType;
 use serde::{Deserialize, Serialize};
+use parachain_template_runtime::WASM_BINARY;
+use sp_genesis_builder::PresetId;
 
 /// Specialized `ChainSpec` for the normal parachain runtime.
 pub type ChainSpec = sc_service::GenericChainSpec<Extensions>;

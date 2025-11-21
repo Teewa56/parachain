@@ -6,7 +6,6 @@ pub use pallet::*;
 mod benchmarking;
 
 pub mod weights;
-use weights::WeightInfo;
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -20,6 +19,9 @@ pub mod pallet {
     use sp_core::H256;
     use sp_runtime::traits::StaticLookup;
     use pallet_identity_registry;
+    use pallet_zk_credentials;
+    use crate::weights::WeightInfo;    
+    use frame_support::BoundedVec;
 
     type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
@@ -36,15 +38,13 @@ pub mod pallet {
     pub trait Config: frame_system::Config + pallet_identity_registry::Config {
         type Currency: ReservableCurrency<Self::AccountId>;
         type TimeProvider: Time;
-        
         /// Deposit required for registration (anti-spam)
         #[pallet::constant]
         type RegistrationDeposit: Get<BalanceOf<Self>>;
-        
         /// Deposit for recovery request
         #[pallet::constant]
         type RecoveryDeposit: Get<BalanceOf<Self>>;
-
+        type ZkCredentials: pallet_zk_credentials::pallet::Config;
         type WeightInfo: WeightInfo;
     }
 
@@ -57,7 +57,7 @@ pub mod pallet {
         /// Nullifier derived from biometric (prevents duplicates)
         pub nullifier: H256,
         /// ZK proof of uniqueness
-        pub uniqueness_proof: Vec<u8>,
+        pub uniqueness_proof: BoundedVec<u8, ConstU32<4096>>,
         /// Timestamp of registration
         pub registered_at: u64,
         /// Associated DID
@@ -79,7 +79,7 @@ pub mod pallet {
         /// New commitment
         pub new_commitment: H256,
         /// ZK proof linking old and new identity
-        pub recovery_proof: Vec<u8>,
+        pub recovery_proof: BoundedVec<u8, ConstU32<4096>>,
         /// Social recovery guardians
         pub guardians: BoundedVec<T::AccountId, ConstU32<10>>,
         /// Timestamp when requested
@@ -528,23 +528,28 @@ pub mod pallet {
             commitment: &H256,
             proof: &[u8],
         ) -> Result<(), Error<T>> {
-            // Basic validation
-            if proof.is_empty() || proof.len() > 1024 {
-                return Err(Error::<T>::InvalidUniquenessProof);
-            }
+            let bounded_proof_data: BoundedVec<u8, ConstU32<2048>> = proof_bytes.to_vec()
+                .try_into().map_err(|_| Error::<T>::InvalidUniquenessProof)?;
 
-            // Verify proof structure
-            let mut data = Vec::new();
-            data.extend_from_slice(nullifier.as_bytes());
-            data.extend_from_slice(commitment.as_bytes());
-            data.extend_from_slice(proof);
+            // Construct public inputs (Nullifier + Commitment)
+            let mut public_inputs_vec = Vec::new();
+            public_inputs_vec.push(nullifier.as_bytes().to_vec().try_into().unwrap());
+            public_inputs_vec.push(commitment.as_bytes().to_vec().try_into().unwrap());
             
-            let proof_hash = sp_io::hashing::blake2_256(&data);
-            
-            // Proof cannot be all zeros
-            if proof_hash == [0u8; 32] {
-                return Err(Error::<T>::InvalidUniquenessProof);
-            }
+            let bounded_inputs: BoundedVec<BoundedVec<u8, ConstU32<64>>, ConstU32<16>> = 
+                public_inputs_vec.try_into().map_err(|_| Error::<T>::InvalidUniquenessProof)?;
+
+            let zk_proof = pallet_zk_credentials::ZkProof {
+                proof_type: pallet_zk_credentials::ProofType::Custom, // Or define a Personhood type
+                proof_data: bounded_proof_data,
+                public_inputs: bounded_inputs,
+                credential_hash: H256::zero(),
+                created_at: 0,
+                nonce: H256::random(),
+            };
+
+            pallet_zk_credentials::Pallet::<T::ZkCredentials>::verify_proof_internal(&zk_proof)
+                .map_err(|_| Error::<T>::InvalidUniquenessProof)?;
 
             Ok(())
         }

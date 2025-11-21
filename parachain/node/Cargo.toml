@@ -1,6 +1,6 @@
 [package]
-name = "parachain-template-node"
-description = "A parachain node template built with Substrate and Cumulus, part of Polkadot Sdk."
+name = "identit-parachain"
+description = "A parachain for decentralized identity management with zero-knowledge proofs, verifiable credentials, on-chain governance, and cross-chain interoperability"
 version = "0.1.0"
 license = "Unlicense"
 authors.workspace = true
@@ -26,6 +26,7 @@ polkadot-sdk = { workspace = true, features = ["node"] }
 prometheus-endpoint.default-features = true
 prometheus-endpoint.workspace = true
 serde = { features = ["derive"], workspace = true, default-features = true }
+sp-core = { workspace = true }
 
 [build-dependencies]
 polkadot-sdk = { workspace = true, features = ["substrate-build-script-utils"] }
