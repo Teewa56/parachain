@@ -343,6 +343,9 @@ impl pallet_verifiable_credentials::Config for Runtime {
     type TimeProvider = Timestamp;
     type ZkCredentials = Runtime;
     type WeightInfo = pallet_verifiable_credentials::weights::SubstrateWeight<Runtime>;
+	type MaxFieldSize = ConstU32<256>;
+    type MaxFields = ConstU32<16>;
+    type MaxFieldsToReveal = ConstU32<16>;
 }
 
 impl pallet_zk_credentials::Config for Runtime {

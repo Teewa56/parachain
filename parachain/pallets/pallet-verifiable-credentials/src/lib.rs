@@ -18,7 +18,7 @@ pub mod pallet {
     use frame_system::pallet_prelude::*;
     use sp_std::vec::Vec;
     use sp_std::convert::TryInto;
-    use sp_core::H256;
+    use sp_core::{ H256, Get };
     use crate::weights::WeightInfo;
     use pallet_identity_registry::pallet::Pallet as IdentityRegistryPallet;
     use pallet_zk_credentials::pallet::Pallet as ZkCredentialsPallet;
@@ -34,6 +34,9 @@ pub mod pallet {
         type TimeProvider: Time;
         type ZkCredentials: pallet_zk_credentials::pallet::Config;
         type WeightInfo: WeightInfo;
+        type MaxFieldSize: Get<u32>;
+        type MaxFields: Get<u32>;
+        type MaxFieldsToReveal: Get<u32>;
     }
 
     #[pallet::genesis_config]
@@ -87,6 +90,9 @@ pub mod pallet {
         pub status: CredentialStatus,
         pub signature: H256,
         pub metadata_hash: H256,
+        pub fields: BoundedVec<BoundedVec<u8, T::MaxFieldSize>, T::MaxFields>,
+        pub required_fields: BoundedVec<bool, T::MaxFields>,
+        pub fields_to_reveal: BoundedVec<u32, T::MaxFieldsToReveal>,
     }
 
     /// Credential schema for defining what fields a credential type should have
@@ -271,6 +277,11 @@ pub mod pallet {
         ProofAlreadyUsed,
         VerificationKeyNotFound,
         ProofTooOld,
+        FieldTooLarge,            // an individual field exceeded MaxFieldSize
+        TooManyFields,            // too many fields overall (exceeds MaxFields)
+        TooManyFieldsToReveal,    // too many reveal indices (exceeds MaxFieldsToReveal)
+        InvalidFieldsLength,      // fields.len() != required_fields.len()
+        InvalidRevealIndex,       // fields_to_reveal contains an index >= fields.len()
     }
 
     /// Maximum number of credentials per subject (prevents unbounded growth)
@@ -335,6 +346,9 @@ pub mod pallet {
             data_hash: H256,
             expires_at: u64,
             signature: H256,
+            fields: Vec<Vec<u8>>,
+            required_fields: Vec<bool>,
+            fields_to_reveal: Vec<u32>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             
@@ -364,8 +378,47 @@ pub mod pallet {
 
             let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
 
+            let inner_fields_result: Result<Vec<BoundedVec<u8, T::MaxFieldSize>>, Error<T>> = fields
+                .into_iter()
+                .map(|f| {
+                    BoundedVec::<u8, T::MaxFieldSize>::try_from(f)
+                        .map_err(|_| Error::<T>::FieldTooLarge)
+                })
+                .collect();
+
+            let inner_fields = inner_fields_result?;
+
+            // Convert outer Vec -> BoundedVec<BoundedVec<..>, T::MaxFields>
+            let bounded_fields: BoundedVec<BoundedVec<u8, T::MaxFieldSize>, T::MaxFields> =
+                BoundedVec::try_from(inner_fields).map_err(|_| Error::<T>::TooManyFields)?;
+
+            // required_fields -> BoundedVec<bool, T::MaxFields>
+            let bounded_required: BoundedVec<bool, T::MaxFields> =
+                BoundedVec::try_from(required_fields).map_err(|_| Error::<T>::TooManyFields)?;
+
+            // fields_to_reveal -> BoundedVec<u32, T::MaxFieldsToReveal>
+            let bounded_reveal: BoundedVec<u32, T::MaxFieldsToReveal> =
+                BoundedVec::try_from(fields_to_reveal).map_err(|_| Error::<T>::TooManyFieldsToReveal)?;
+
+            // -------------------------
+            // Consistency checks
+            // -------------------------
+            // fields and required_fields must have same length
+            ensure!(
+                bounded_fields.len() == bounded_required.len(),
+                Error::<T>::InvalidFieldsLength
+            );
+
+            // every reveal index must be < bounded_fields.len()
+            let fields_len_u32: u32 = bounded_fields.len()
+                .try_into()
+                .expect("bounded_fields.len() fits into u32; MaxFields is u32-limited");
+            for idx in bounded_reveal.iter() {
+                ensure!(*idx < fields_len_u32, Error::<T>::InvalidRevealIndex);
+            }
+
             // 5. Create Credential Object
-            let credential = Credential<T> {
+            let credential = Credential::<T> {
                 subject: subject_did,
                 issuer: issuer_did,
                 credential_type: credential_type.clone(),
@@ -375,6 +428,9 @@ pub mod pallet {
                 status: CredentialStatus::Active,
                 signature,
                 metadata_hash: Self::generate_metadata_hash(now, expires_at, &CredentialStatus::Active),
+                fields: bounded_fields,
+                fields_to_reveal: bounded_reveal,
+                required_fields: bounded_required,
             };
 
             let credential_id = Self::generate_credential_id(&credential);
@@ -399,14 +455,9 @@ pub mod pallet {
             if expires_at > 0 {
                 // Convert timestamp (seconds) to approximate block number.
                 // Assuming 6 seconds per block: Block = Time / 6
-                // We cast to u64 for the key.
                 let expiry_block = expires_at / 6; 
                 
                 Expiries::<T>::try_mutate(expiry_block, |list| -> DispatchResult {
-                    // Try to add to the expiry list for this block
-                    // If the list is full (Max 50), this specific cleanup might fail, 
-                    // but we don't want to fail the whole transaction, so we ignore the error 
-                    // or you can choose to fail. Here we proceed to avoid blocking issuance.
                     let _ = list.try_push(credential_id); 
                     Ok(())
                 })?;
@@ -1204,9 +1255,37 @@ pub mod pallet {
             subject_did: H256,
             issuer_did: H256,
             credential_type: CredentialType,
+            fields: Vec<Vec<u8>>,
+            required_fields: Vec<bool>,
+            fields_to_reveal: Vec<u32>,
         ) -> H256 {
             let now = <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
-            let credential = Credential<T> {
+            
+            let mut converted_fields: Vec<BoundedVec<u8, T::MaxFieldSize>> = Vec::new();
+
+            for f in fields.into_iter() {
+                // Create empty bounded vec
+                let mut bounded = BoundedVec::<u8, T::MaxFieldSize>::default();
+
+                // Push bytes until full or exhausted
+                for byte in f.into_iter().take(T::MaxFieldSize::get().saturated_into::<usize>()) {
+                    let _ = bounded.try_push(byte);
+                }
+
+                converted_fields.push(bounded);
+            }
+
+            let bounded_fields = BoundedVec::<BoundedVec<u8, T::MaxFieldSize>, T::MaxFields>::try_from(converted_fields)
+                    .unwrap_or_default();
+
+            // ---- required_fields (truncate if too large) ----
+            let bounded_required = BoundedVec::<bool, T::MaxFields>::try_from(required_fields).unwrap_or_default();
+
+            // ---- fields_to_reveal (truncate if too large) ----
+            let bounded_reveal = BoundedVec::<u32, T::MaxFieldsToReveal>::try_from(fields_to_reveal)
+                    .unwrap_or_default();
+
+            let credential = Credential::<T> {
                 subject: subject_did,
                 issuer: issuer_did,
                 credential_type,
@@ -1216,6 +1295,9 @@ pub mod pallet {
                 status: CredentialStatus::Active,
                 signature: H256::zero(),
                 metadata_hash: Self::generate_metadata_hash(now, now + 86400, &CredentialStatus::Active),
+                fields: bounded_fields,
+                required_fields: bounded_required,
+                fields_to_reveal: bounded_reveal,
             };
             
             let credential_id = Self::generate_credential_id(&credential);

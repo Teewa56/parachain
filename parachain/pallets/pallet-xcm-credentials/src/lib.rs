@@ -22,13 +22,14 @@ pub mod pallet {
         Junctions,
         Xcm,
         OriginKind,
+        SendXcm,
     };
     use pallet_xcm::Pallet as XcmPallet;
     use frame_support::BoundedVec;
     use crate::weights::WeightInfo;
     use sp_runtime::traits::SaturatedConversion;
     use sp_std::marker::PhantomData;
-    use xcm::prelude::SendXcm;
+    use frame_system::EnsureOrigin;
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
@@ -38,8 +39,11 @@ pub mod pallet {
         type TimeProvider: Time;
         type WeightInfo: WeightInfo;
         type ParachainId: Get<cumulus_primitives_core::ParaId>; 
-        type XcmOriginToTransactDispatchOrigin: EnsureOrigin<Self::RuntimeOrigin, Success = Location>;
-        type ParachainIdentity: frame_support::traits::EnsureOrigin<<Self as frame_system::Config>::RuntimeOrigin, Success = Location>;
+        type XcmOriginToTransactDispatchOrigin: EnsureOrigin<<T as frame_system::Config>::RuntimeOrigin, Success = Location>;
+        type ParachainIdentity: frame_support::traits::EnsureOrigin<
+            <Self as frame_system::Config>::RuntimeOrigin, 
+            Success = Location
+        >;
         #[pallet::constant]
         type DefaultXcmFee: Get<Weight>;
     }
@@ -440,8 +444,8 @@ pub mod pallet {
                 }
             ]);
 
-            <T as pallet_xcm::Config>::XcmRouter::send_xcm(
-                destination, 
+            <T::XcmRouter as SendXcm>::send_xcm(
+                destination,
                 message
             ).map_err(|_| Error::<T>::XcmSendFailed)?;
 
@@ -474,11 +478,11 @@ pub mod pallet {
                 }
             ]);
 
-            <T as pallet_xcm::Config>::XcmRouter::send_xcm(
-                destination, 
+            <T::XcmRouter as SendXcm>::send_xcm(
+                destination,
                 message
             ).map_err(|_| Error::<T>::XcmSendFailed)?;
-
+            
             Ok(())
         }
 

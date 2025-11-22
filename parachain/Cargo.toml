@@ -78,7 +78,7 @@ jsonrpsee = { version = "0.24.3" }
 log = { version = "0.4.22", default-features = false }
 polkadot-sdk = { version = "2503.0.1", default-features = false }
 prometheus-endpoint = { version = "0.17.2", package = "substrate-prometheus-endpoint" }
-serde = { version = "1.0.214", default-features = false }
+serde = { version = "1.0.214", default-features = false, features = ["derive"] }
 codec = { version = "3.7.4", default-features = false, package = "parity-scale-codec", features = ["derive"] }
 cumulus-pallet-parachain-system = { version = "0.20.0", default-features = false }
 hex-literal = { version = "0.4.1", default-features = false }
