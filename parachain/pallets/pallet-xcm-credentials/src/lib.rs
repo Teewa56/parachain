@@ -29,7 +29,7 @@ pub mod pallet {
     use crate::weights::WeightInfo;
     use sp_runtime::traits::SaturatedConversion;
     use sp_std::marker::PhantomData;
-    use frame_system::EnsureOrigin;
+    use frame_support::traits::EnsureOrigin;
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
@@ -39,7 +39,10 @@ pub mod pallet {
         type TimeProvider: Time;
         type WeightInfo: WeightInfo;
         type ParachainId: Get<cumulus_primitives_core::ParaId>; 
-        type XcmOriginToTransactDispatchOrigin: EnsureOrigin<<T as frame_system::Config>::RuntimeOrigin, Success = Location>;
+        type XcmOriginToTransactDispatchOrigin: EnsureOrigin<
+            T as frame_system::Config>::RuntimeOrigin,
+            Success = Location
+        >;
         type ParachainIdentity: frame_support::traits::EnsureOrigin<
             <Self as frame_system::Config>::RuntimeOrigin, 
             Success = Location
@@ -72,7 +75,7 @@ pub mod pallet {
     }
     
     /// Cross-chain credential verification request
-    #[derive(Clone, Encode, Decode, DecodeWithMemTracking, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     pub struct XcmCredentialRequest {
         /// Source parachain ID
         pub source_para_id: u32,
@@ -85,7 +88,7 @@ pub mod pallet {
     }
 
     /// Cross-chain credential verification response
-    #[derive(Clone, Encode, Decode, DecodeWithMemTracking, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     pub struct XcmCredentialResponse {
         pub target_para_id: u32,
         pub credential_hash: H256,
@@ -95,7 +98,7 @@ pub mod pallet {
     }
 
     /// Registered parachains for cross-chain credentials
-    #[derive(Clone, Encode, Decode, DecodeWithMemTracking, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     pub struct ParachainRegistry {
         /// Parachain ID
         pub para_id: u32,
@@ -444,7 +447,7 @@ pub mod pallet {
                 }
             ]);
 
-            <T::XcmRouter as SendXcm>::send_xcm(
+            <T::XcmRouter as SendXcm>::deliver(
                 destination,
                 message
             ).map_err(|_| Error::<T>::XcmSendFailed)?;
@@ -478,7 +481,7 @@ pub mod pallet {
                 }
             ]);
 
-            <T::XcmRouter as SendXcm>::send_xcm(
+            <T::XcmRouter as SendXcm>::deliver(
                 destination,
                 message
             ).map_err(|_| Error::<T>::XcmSendFailed)?;
@@ -523,17 +526,20 @@ pub mod pallet {
         }
 
         fn ensure_sibling_para(origin: OriginFor<T>) -> Result<u32, Error<T>> {
-            // 1. Convert origin to Location
             let location = T::ParachainIdentity::ensure_origin(origin)
                 .map_err(|_| Error::<T>::InvalidXcmMessage)?;
 
-            // 2. Match specific XCM V5 pattern
-            // We match X1(junctions_array), then look at the first item [0]
-            if let Location { parents: 1, interior: Junctions::X1(ref junctions) } = location {
-                // Check if the first junction is a Parachain ID
-                if let Junction::Parachain(id) = junctions[0] {
-                    return Ok(id);
+            // Match XCM v4/v5 pattern:
+            match location {
+                Location { parents: 1, interior } => {
+                    // Check if interior is X1 with Parachain junction
+                    if let Some(junction) = interior.first() {
+                        if let Junction::Parachain(id) = junction {
+                            return Ok(*id);
+                        }
+                    }
                 }
+                _ => {}
             }
             
             Err(Error::<T>::InvalidXcmMessage)

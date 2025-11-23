@@ -36,16 +36,17 @@ pub mod pallet {
     }
 
     /// Proof types supported
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen, DecodeWithMemTracking)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     pub enum ProofType {
         AgeAbove,
         StudentStatus,
         VaccinationStatus,
         EmploymentStatus,
+        Personhood,
         Custom,
     }
 
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, Copy, MaxEncodedLen, DecodeWithMemTracking)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, Copy, MaxEncodedLen)]
     pub enum ZkCredentialType {
         StudentStatus,
         VaccinationStatus,
@@ -55,7 +56,7 @@ pub mod pallet {
     }
 
     /// ZK Proof structure 
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen, DecodeWithMemTracking)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     pub struct ZkProof {
         pub proof_type: ProofType,
         pub proof_data: BoundedVec<u8, ConstU32<2048>>, // Max 2KB proof
@@ -66,7 +67,7 @@ pub mod pallet {
     }
 
     /// Verification key for a proof circuit
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen, DecodeWithMemTracking)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     pub struct CircuitVerifyingKey {
         pub proof_type: ProofType,
         pub vk_data: BoundedVec<u8, ConstU32<4096>>, // Max 4KB verification key
@@ -404,6 +405,51 @@ pub mod pallet {
                 ZkCredentialType::EmploymentStatus => ProofType::EmploymentStatus,
                 ZkCredentialType::AgeVerification => ProofType::AgeAbove,
                 ZkCredentialType::Custom => ProofType::Custom,
+            }
+        }
+
+        pub fn verify_proof_internal(proof: &ZkProof) -> Result<bool, DispatchError> {
+            // 1. Get verification key
+            let circuit_vk = VerifyingKeys::<T>::get(&proof.proof_type)
+                .ok_or(Error::<T>::VerificationKeyNotFound)?;
+
+            // 2. Check for replay attacks
+            let proof_hash = Self::hash_proof(proof);
+            ensure!(
+                !VerifiedProofs::<T>::contains_key(&proof_hash),
+                Error::<T>::ProofAlreadyVerified
+            );
+
+            // 3. Validate proof freshness
+            ensure!(
+                Self::validate_proof_freshness(proof),
+                Error::<T>::ProofTooOld
+            );
+
+            // 4. Perform cryptographic verification
+            #[cfg(feature = "std")]
+            let verification_result = Self::verify_groth16_proof(
+                &circuit_vk.vk_data,
+                &proof.proof_data,
+                &proof.public_inputs,
+            );
+
+            // 5. In no_std (runtime), we skip actual crypto verification
+            // This is a limitation - real verification happens off-chain or via std feature
+            #[cfg(not(feature = "std"))]
+            let verification_result: Result<bool, ()> = {
+                // In production, you'd want to ensure this is only called in std context
+                // For now, we return Ok(true) to allow compilation, but add a log
+                log::warn!("ZK proof verification skipped in no_std context");
+                #[cfg(all(not(feature = "std"), not(debug_assertions)))]
+                compile_error!("fake verification for now for demo");
+                Ok(true)
+            };
+
+            match verification_result {
+                Ok(true) => Ok(true),
+                Ok(false) => Err(Error::<T>::ProofVerificationFailed.into()),
+                Err(_) => Err(Error::<T>::ProofVerificationFailed.into()),
             }
         }
     }

@@ -19,9 +19,9 @@ pub mod pallet {
     use sp_core::H256;
     use sp_runtime::traits::StaticLookup;
     use pallet_identity_registry;
-    use pallet_zk_credentials;
     use crate::weights::WeightInfo;    
     use frame_support::BoundedVec;
+    use pallet_zk_credentials;
 
     type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
@@ -44,7 +44,7 @@ pub mod pallet {
         /// Deposit for recovery request
         #[pallet::constant]
         type RecoveryDeposit: Get<BalanceOf<Self>>;
-        type ZkCredentials: pallet_zk_credentials::pallet::Config;
+        type ZkCredentials: pallet_zk_credentials::Config;
         type WeightInfo: WeightInfo;
     }
 
@@ -526,28 +526,46 @@ pub mod pallet {
         fn verify_uniqueness_proof(
             nullifier: &H256,
             commitment: &H256,
-            proof: &[u8],
+            proof_bytes: &[u8],
         ) -> Result<(), Error<T>> {
+            // Validate proof size
+            if proof_bytes.is_empty() || proof_bytes.len() > 2048 {
+                return Err(Error::<T>::InvalidUniquenessProof);
+            }
+
+            // Convert to BoundedVec for ZkProof struct
             let bounded_proof_data: BoundedVec<u8, ConstU32<2048>> = proof_bytes.to_vec()
-                .try_into().map_err(|_| Error::<T>::InvalidUniquenessProof)?;
+                .try_into()
+                .map_err(|_| Error::<T>::InvalidUniquenessProof)?;
 
             // Construct public inputs (Nullifier + Commitment)
             let mut public_inputs_vec = Vec::new();
-            public_inputs_vec.push(nullifier.as_bytes().to_vec().try_into().unwrap());
-            public_inputs_vec.push(commitment.as_bytes().to_vec().try_into().unwrap());
+            
+            let nullifier_bounded: BoundedVec<u8, ConstU32<64>> = nullifier.as_bytes().to_vec()
+                .try_into()
+                .map_err(|_| Error::<T>::InvalidUniquenessProof)?;
+            public_inputs_vec.push(nullifier_bounded);
+            
+            let commitment_bounded: BoundedVec<u8, ConstU32<64>> = commitment.as_bytes().to_vec()
+                .try_into()
+                .map_err(|_| Error::<T>::InvalidUniquenessProof)?;
+            public_inputs_vec.push(commitment_bounded);
             
             let bounded_inputs: BoundedVec<BoundedVec<u8, ConstU32<64>>, ConstU32<16>> = 
-                public_inputs_vec.try_into().map_err(|_| Error::<T>::InvalidUniquenessProof)?;
+                public_inputs_vec.try_into()
+                .map_err(|_| Error::<T>::InvalidUniquenessProof)?;
 
+            // Create ZkProof struct for verification
             let zk_proof = pallet_zk_credentials::ZkProof {
-                proof_type: pallet_zk_credentials::ProofType::Custom, // Or define a Personhood type
+                proof_type: pallet_zk_credentials::ProofType::Personhood,
                 proof_data: bounded_proof_data,
                 public_inputs: bounded_inputs,
-                credential_hash: H256::zero(),
-                created_at: 0,
-                nonce: H256::random(),
+                credential_hash: H256::zero(), // Not used for personhood proofs
+                created_at: <T as Config>::TimeProvider::now().saturated_into::<u64>(),
+                nonce: H256::random(), // Generate random nonce for this verification
             };
 
+            // Call the verification method from pallet-zk-credentials
             pallet_zk_credentials::Pallet::<T::ZkCredentials>::verify_proof_internal(&zk_proof)
                 .map_err(|_| Error::<T>::InvalidUniquenessProof)?;
 

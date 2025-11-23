@@ -163,8 +163,8 @@ fn development_config_genesis() -> Value {
 /// Provides the JSON preset based on the requested name
 pub fn get_preset(id: &PresetId) -> Option<Vec<u8>> {
     let patch = match id.as_ref() {
-        DEV_RUNTIME_PRESET => development_genesis_config(),
-        LOCAL_TESTNET_RUNTIME_PRESET => local_testnet_genesis_config(),
+        DEV_RUNTIME_PRESET => development_config_genesis(),
+        LOCAL_TESTNET_RUNTIME_PRESET => local_testnet_genesis(),
         _ => return None,
     };
 

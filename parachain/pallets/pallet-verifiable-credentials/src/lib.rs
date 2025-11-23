@@ -57,7 +57,7 @@ pub mod pallet {
     }
 
     /// Credential types
-    #[derive(Clone, Encode, Decode, DecodeWithMemTracking, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
     pub enum CredentialType {
         Education,
@@ -69,7 +69,7 @@ pub mod pallet {
     }
 
     /// Credential status
-    #[derive(Clone, Encode, Decode, DecodeWithMemTracking, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     pub enum CredentialStatus {
         Active,
         Revoked,
@@ -78,7 +78,7 @@ pub mod pallet {
     }
 
     /// Verifiable Credential structure
-    #[derive(Clone, Encode, Decode, DecodeWithMemTracking, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     #[scale_info(skip_type_params(T))]
     pub struct Credential<T: Config> {
         pub subject: H256,
@@ -95,8 +95,27 @@ pub mod pallet {
         pub fields_to_reveal: BoundedVec<u32, T::MaxFieldsToReveal>,
     }
 
+    impl<T: Config> Clone for Credential<T> {
+        fn clone(&self) -> Self {
+            Self {
+                subject: self.subject,
+                issuer: self.issuer,
+                credential_type: self.credential_type.clone(),
+                data_hash: self.data_hash,
+                issued_at: self.issued_at,
+                expires_at: self.expires_at,
+                status: self.status.clone(),
+                signature: self.signature,
+                metadata_hash: self.metadata_hash,
+                fields: self.fields.clone(),
+                required_fields: self.required_fields.clone(),
+                fields_to_reveal: self.fields_to_reveal.clone(),
+            }
+        }
+    }
+
     /// Credential schema for defining what fields a credential type should have
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen, DecodeWithMemTracking)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     #[scale_info(skip_type_params(T))]
     pub struct CredentialSchema {
         pub schema_id: H256,
@@ -107,14 +126,14 @@ pub mod pallet {
     }
 
     /// Selective disclosure request
-    #[derive(Clone, Encode, Decode, DecodeWithMemTracking, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     pub struct DisclosureRequest {
         pub credential_id: H256,
         pub fields_to_reveal: BoundedVec<u32, ConstU32<50>>,
         pub proof: H256,
     }
 
-    #[derive(Clone, Encode, Decode, DecodeWithMemTracking, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     pub struct SelectiveDisclosureRequest {
         pub credential_id: H256,
         pub fields_to_reveal: BoundedVec<u32, ConstU32<50>>,
@@ -123,7 +142,7 @@ pub mod pallet {
     }
 
     /// ZK Proof type for selective disclosure
-    #[derive(Clone, Encode, Decode, DecodeWithMemTracking, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     pub enum ZkCredentialType {
         StudentStatus,
         VaccinationStatus,

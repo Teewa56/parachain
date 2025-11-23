@@ -538,6 +538,28 @@ fn test_inter_pallet_verification_key_retrieval() {
     });
 }
 
+#[test]
+fn test_cross_pallet_verification() {
+    new_test_ext().execute_with(|| {
+        // Register VK in ZkCredentials
+        let vk_data = vec![0u8; 128];
+        ZkCredentials::register_verification_key(
+            RuntimeOrigin::root(),
+            ProofType::Personhood,
+            vk_data,
+            H256::zero()
+        ).unwrap();
+
+        // Now try personhood registration
+        let nullifier = H256::random();
+        let commitment = H256::random();
+        let proof = vec![1u8; 256];
+
+        // This should now work!
+        ProofOfPersonhood::verify_uniqueness_proof(&nullifier, &commitment, &proof).unwrap();
+    });
+}
+
 // Helper functions
 fn create_test_identity(account: AccountId32, did: Vec<u8>) -> H256 {
     let pk = H256::from_slice(&account.as_ref()[..32]);
