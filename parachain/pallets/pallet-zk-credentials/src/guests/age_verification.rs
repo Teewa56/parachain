@@ -1,4 +1,8 @@
 use sp1_sdk::{ProverClient, SP1Stdin, SP1Stdout};
+
+#![no_main]
+sp1_zkvm::entrypoint!(main);
+
 use serde::{Deserialize, Serialize};
 use std::time::UNIX_EPOCH;
 
@@ -19,9 +23,8 @@ struct VerificationOutput {
 }
 
 fn main() {
-    let stdin = SP1Stdin::new();
-    let public_input: CredentialInput = bincode::deserialize(&stdin.read_public()).unwrap();
-    let private_cred: PrivateCredential = bincode::deserialize(&stdin.read_private()).unwrap();
+    let public_input = sp1_zkvm::io::read::<CredentialInput>();
+    let private_cred = sp1_zkvm::io::read::<PrivateCredential>();
 
     // Verification logic: age >= threshold
     let age = public_input.current_year - private_cred.birth_year;
@@ -31,7 +34,7 @@ fn main() {
     let output = VerificationOutput { is_valid };
     let mut stdout = SP1Stdout::new();
     bincode::serialize_into(&mut stdout, &output).unwrap();
-    stdout.flush();
+    sp1_zkvm::io::commit(&output);
 }
 
 sp1_sdk::build_elf!(main);

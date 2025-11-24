@@ -1,4 +1,8 @@
 use sp1_sdk::{ProverClient, SP1Stdin, SP1Stdout};
+
+#![no_main]
+sp1_zkvm::entrypoint!(main);
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -17,9 +21,8 @@ struct VerificationOutput {
 }
 
 fn main() {
-    let stdin = SP1Stdin::new();
-    let public_input: CredentialInput = bincode::deserialize(&stdin.read_public()).unwrap();
-    let private_cred: PrivateCredential = bincode::deserialize(&stdin.read_private()).unwrap();
+    let public_input = sp1_zkvm::io::read::<CredentialInput>();
+    let private_cred = sp1_zkvm::io::read::<PrivateCredential>();
 
     // Minimal/custom verification logic (expand per sector)
     let is_valid = !private_cred.custom_data.is_empty()  // Non-empty private
@@ -31,7 +34,7 @@ fn main() {
     let output = VerificationOutput { is_valid };
     let mut stdout = SP1Stdout::new();
     bincode::serialize_into(&mut stdout, &output).unwrap();
-    stdout.flush();
+    sp1_zkvm::io::commit(&output);
 }
 
 sp1_sdk::build_elf!(main);

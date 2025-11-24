@@ -18,8 +18,7 @@ pub mod pallet {
     use crate::weights::WeightInfo;
 
     #[cfg(feature = "sp1")]
-    use sp1_sdk::verifier::verify_proof;
-    use sp1_core::runtime::load_verifying_key;
+    use sp1_sdk::{ProverClient, SP1Stdin};
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
