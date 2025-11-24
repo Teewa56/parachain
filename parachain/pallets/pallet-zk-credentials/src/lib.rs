@@ -18,8 +18,8 @@ pub mod pallet {
     use crate::weights::WeightInfo;
 
     #[cfg(feature = "sp1")]
-    use sp1_sdk::verify::verify_proof;
-    use sp1_sdk::utils::load_verifying_key;
+    use sp1_sdk::verifier::verify_proof;
+    use sp1_core::runtime::load_verifying_key;
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
@@ -30,7 +30,7 @@ pub mod pallet {
     }
 
     /// Proof types supported (kept for compatibility; SP1 handles generically)
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen, DecodeWithMemTracking)]
     pub enum ProofType {
         AgeAbove,
         StudentStatus,
@@ -50,7 +50,7 @@ pub mod pallet {
     }
 
     /// ZK Proof structure (updated for SP1: proof_data is SP1 proof bytes)
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen, DecodeWithMemTracking)]
     pub struct ZkProof {
         pub proof_type: ProofType,
         pub proof_data: BoundedVec<u8, ConstU32<8192>>, // SP1 proofs ~4-8KB
@@ -159,8 +159,7 @@ pub mod pallet {
                 }
 
                 // On-chain SP1 verification
-                SP1Verifier::verify(&proof.proof_data, &vk)
-                    .map_err(|_| Error::<T>::ProofVerificationFailed)?;
+                verify_proof(&proof.proof_data, &vk).map_err(|_| Error::<T>::ProofVerificationFailed)?;
 
                 VerifiedProofs::<T>::insert(&proof_hash, (who.clone(), proof.created_at));
 
@@ -211,7 +210,7 @@ pub mod pallet {
 
         /// Batch verify multiple proofs using SP1
         #[pallet::call_index(3)]
-        #[pallet::weight(<T as Config>::WeightInfo::batch_verify_proofs())]
+        #[pallet::weight(<T as Config>::WeightInfo::batch_verify_proofs(proofs.len() as u32))]
         pub fn batch_verify_proofs(
             origin: OriginFor<T>,
             proofs: Vec<ZkProof>,
@@ -232,8 +231,7 @@ pub mod pallet {
                         Error::<T>::ProofAlreadyVerified
                     );
 
-                    SP1Verifier::verify(&proof.proof_data, &vk)
-                        .map_err(|_| Error::<T>::ProofVerificationFailed)?;
+                    verify_proof(&proof.proof_data, &vk).map_err(|_| Error::<T>::ProofVerificationFailed)?;
 
                     VerifiedProofs::<T>::insert(&proof_hash, (who.clone(), proof.created_at));
                     Self::deposit_event(Event::ProofVerified {
@@ -336,8 +334,7 @@ pub mod pallet {
                     return Err(Error::<T>::VerificationKeyNotFound.into());
                 }
 
-                SP1Verifier::verify(&proof.proof_data, &vk)
-                    .map_err(|_| Error::<T>::ProofVerificationFailed)?;
+                verify_proof(&proof.proof_data, &vk).map_err(|_| Error::<T>::ProofVerificationFailed)?;
 
                 Ok(true)
             }
