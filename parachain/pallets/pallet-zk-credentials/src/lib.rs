@@ -16,6 +16,10 @@ pub mod pallet {
     use sp_runtime::traits::SaturatedConversion;
     use frame_support::BoundedVec;
     use crate::weights::WeightInfo;
+    use ark_groth16::{Groth16, Proof, prepare_verifying_key, VerifyingKey};
+    use ark_snark::SNARK;
+    use ark_ec::pairing::Pairing;
+    use ark_bn254::{Bn254, Fr};
 
     #[cfg(feature = "sp1")]
     use sp1_sdk::{ProverClient, SP1Stdin};
@@ -305,101 +309,42 @@ pub mod pallet {
 
         /// Internal verification logic
         fn verify_proof_internal(proof: &ZkProof) -> Result<(), Error<T>> {
-            // Get verification key
-            let _vk_data = VerifyingKeys::<T>::get(&proof.proof_type)
+            let vk_data = VerifyingKeys::<T>::get(&proof.proof_type)
                 .ok_or(Error::<T>::VerificationKeyNotFound)?;
             
-            #[cfg(feature = "sp1")]
-            {
-                // Validate proof data
-                if proof.proof_data.is_empty() {
-                    return Err(Error::<T>::InvalidProofData);
-                }
-                // SP1 proofs should be at least 64 bytes (typical for zk proofs)
-                if proof.proof_data.len() < 64 {
-                    return Err(Error::<T>::InvalidProofData);
-                }
+            // Deserialize verification key
+            let vk = VerifyingKey::<Bn254>::deserialize_compressed(
+                &vk_data.vk_data[..]
+            ).map_err(|_| Error::<T>::InvalidVkData)?;
+            
+            // Deserialize proof
+            let groth16_proof = Proof::<Bn254>::deserialize_compressed(
+                &proof.proof_data[..]
+            ).map_err(|_| Error::<T>::InvalidProofData)?;
+            
+            // Convert public inputs to field elements
+            let inputs: Vec<Fr> = proof.public_inputs
+                .iter()
+                .map(|input| Fr::from_be_bytes_mod_order(input))
+                .collect();
 
-                // Validate public inputs
-                if proof.public_inputs.is_empty() {
-                    return Err(Error::<T>::InvalidPublicInputs);
-                }
-                // Each public input should be non-empty
-                for input in proof.public_inputs.iter() {
-                    if input.is_empty() {
-                        return Err(Error::<T>::InvalidPublicInputs);
-                    }
-                }
-                // Public inputs total should not exceed reasonable size
-                let total_inputs_size: usize = proof.public_inputs.iter().map(|i| i.len()).sum();
-                if total_inputs_size > 1024 {
-                    return Err(Error::<T>::InvalidPublicInputs);
-                }
+            // 1. Prepare the verification key (must be done before using `verify_proof`)
+            let pvk = ark_groth16::prepare_verifying_key(&vk)
+                .map_err(|_| Error::<T>::ProofVerificationFailed)?;
+            
+            // 2. Verify the proof
+            let verification_result = ark_groth16::verify_proof(
+                &pvk,               // the prepared verification key (pvk)
+                &groth16_proof,     // The proof
+                &inputs             // The public inputs
+            ).map_err(|_| Error::<T>::ProofVerificationFailed)?; // Handle potential SnarkError
 
-                // Validate verification key
-                if _vk_data.vk_data.is_empty() {
-                    return Err(Error::<T>::InvalidVkData);
-                }
-                // VK should be reasonable size (typically 500+ bytes for zk schemes)
-                if _vk_data.vk_data.len() < 256 {
-                    return Err(Error::<T>::InvalidVkData);
-                }
-
-                // Validate credential hash is not all zeros
-                if proof.credential_hash == H256::zero() {
-                    return Err(Error::<T>::InvalidProofData);
-                }
-
-                // Validate nonce is not all zeros (prevents trivial replays)
-                if proof.nonce == H256::zero() {
-                    return Err(Error::<T>::InvalidProofData);
-                }
-
-                // Check schema if it exists for this proof type
-                if let Some(schema) = ProofSchemas::<T>::get(&proof.proof_type) {
-                    // Verify public inputs count matches schema
-                    if proof.public_inputs.len() != schema.len() {
-                        return Err(Error::<T>::InvalidPublicInputs);
-                    }
-                }
-
-                // Prepare inputs for the SP1 adapter.
-                let public_inputs_vec: Vec<Vec<u8>> = proof
-                    .public_inputs
-                    .iter()
-                    .map(|b| b.to_vec())
-                    .collect();
-
-                // Use the adapter which selects the correct sp1-sdk variant.
-                Self::sp1_verify_adapter(
-                    proof.proof_data.as_slice(),
-                    &public_inputs_vec,
-                    _vk_data.vk_data.as_slice(),
-                )?;
+            // 3. Check if the proof was actually valid (the return value is Result<bool, ...>)
+            if !verification_result {
+                return Err(Error::<T>::ProofVerificationFailed);
             }
-
-            #[cfg(not(feature = "sp1"))]
-            {
-                // Fallback: Proper validation
-                if proof.proof_data.is_empty() || proof.proof_data.len() < 64 {
-                    return Err(Error::<T>::InvalidProofData);
-                }
-
-                if proof.public_inputs.is_empty() {
-                    return Err(Error::<T>::InvalidPublicInputs);
-                }
-
-                for input in proof.public_inputs.iter() {
-                    if input.is_empty() {
-                        return Err(Error::<T>::InvalidPublicInputs);
-                    }
-                }
-
-                if proof.credential_hash == H256::zero() || proof.nonce == H256::zero() {
-                    return Err(Error::<T>::InvalidProofData);
-                }
-            }
-
+            
+            // If all checks pass:
             Ok(())
         }
 
@@ -450,60 +395,6 @@ pub mod pallet {
                 institution_hash.as_bytes().to_vec(),
                 vec![if is_active { 1u8 } else { 0u8 }],
             ]
-        }
-    }
-    
-    impl<T: Config> Pallet<T> {
-        // Adapter for calling ProverClient::verify — adjust the active branch to match your sp1-sdk.
-        fn sp1_verify_adapter(
-            proof_bytes: &[u8],
-            public_inputs: &[Vec<u8>],
-            vk_bytes: &[u8],
-        ) -> Result<(), Error<T>> {
-            // Variant A (common): instance method taking &[u8], &[Vec<u8>], &[u8] -> Result<(), E>
-            #[cfg(feature = "sp1_variant_a")]
-            {
-                let client = ProverClient::new();
-                client
-                    .verify(proof_bytes, public_inputs, vk_bytes)
-                    .map_err(|_| Error::<T>::ProofVerificationFailed)?;
-                return Ok(());
-            }
-
-            // Variant B: takes &[u8], &[&[u8]] -> Result<bool, E>
-            #[cfg(feature = "sp1_variant_b")]
-            {
-                let client = ProverClient::new();
-                // convert Vec<Vec<u8>> -> Vec<&[u8]>
-                let refs: Vec<&[u8]> = public_inputs.iter().map(|v| v.as_slice()).collect();
-                let ok = client
-                    .verify(proof_bytes, refs.as_slice(), vk_bytes)
-                    .map_err(|_| Error::<T>::ProofVerificationFailed)?;
-                if !ok {
-                    return Err(Error::<T>::ProofVerificationFailed);
-                }
-                return Ok(());
-            }
-
-            // Variant C: uses SP1Stdin runner (stdin JSON or custom struct)
-            #[cfg(feature = "sp1_variant_c")]
-            {
-                // Build SP1Stdin or required input format
-                let mut stdin = SP1Stdin::new();
-                stdin.set_proof(proof_bytes);
-                stdin.set_public_inputs(public_inputs);
-                stdin.set_vk(vk_bytes);
-
-                let client = ProverClient::new();
-                client
-                    .run_with_stdin(stdin)
-                    .map_err(|_| Error::<T>::ProofVerificationFailed)?;
-                return Ok(());
-            }
-
-            // If none of the feature flags matched, fail at compile-time with helpful message.
-            #[cfg(not(any(feature = "sp1_variant_a", feature = "sp1_variant_b", feature = "sp1_variant_c")))]
-            return Err(Error::<T>::ProofVerificationFailed);
         }
     }
 }

@@ -22,6 +22,7 @@ pub mod pallet {
     use crate::weights::WeightInfo;    
     use frame_support::BoundedVec;
     use pallet_zk_credentials;
+    use sp_trie::{generate_trie_proof, verify_trie_proof, LayoutV1, TrieDBBuilder};
 
     type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
@@ -522,79 +523,285 @@ pub mod pallet {
     }
 
     impl<T: Config> Pallet<T> {
-        /// Verify uniqueness proof (ZK proof that biometric is unique)
+        /// Verify uniqueness proof
         fn verify_uniqueness_proof(
             nullifier: &H256,
             commitment: &H256,
             proof_bytes: &[u8],
         ) -> Result<(), Error<T>> {
-            // Validate proof size
-            if proof_bytes.is_empty() || proof_bytes.len() > 2048 {
-                return Err(Error::<T>::InvalidUniquenessProof);
+            // 1. Verify commitment structure
+            // Expected: commitment = Hash(biometric_hash || salt)
+            ensure!(
+                proof_bytes.len() >= 64,
+                Error::<T>::InvalidUniquenessProof
+            );
+            
+            let salt = &proof_bytes[0..32];
+            
+            // 2. Recompute commitment
+            let mut preimage = Vec::new();
+            preimage.extend_from_slice(nullifier.as_bytes());
+            preimage.extend_from_slice(salt);
+            let computed_commitment = sp_io::hashing::blake2_256(&preimage);
+            
+            ensure!(
+                computed_commitment == commitment.as_bytes(),
+                Error::<T>::InvalidCommitment
+            );
+            
+            /// 4. LAYER 2: Verify nullifier is UNIQUE (not already registered)
+            // This is the PRIMARY uniqueness check - simple storage lookup
+            ensure!(
+                !PersonhoodRegistry::<T>::contains_key(nullifier),
+                Error::<T>::NullifierAlreadyUsed
+            );
+
+            // 5. LAYER 3: Verify ZK proof (if provided)
+            // Proves "I have a valid biometric" without revealing it
+            if proof_bytes.len() > 32 {
+                let zk_proof_data = &proof_bytes[32..];
+                Self::verify_biometric_zk_proof(nullifier, commitment, zk_proof_data)?;
             }
-
-            // Convert to BoundedVec for ZkProof struct
-            let bounded_proof_data: BoundedVec<u8, ConstU32<2048>> = proof_bytes.to_vec()
-                .try_into()
-                .map_err(|_| Error::<T>::InvalidUniquenessProof)?;
-
-            // Construct public inputs (Nullifier + Commitment)
-            let mut public_inputs_vec = Vec::new();
-            
-            let nullifier_bounded: BoundedVec<u8, ConstU32<64>> = nullifier.as_bytes().to_vec()
-                .try_into()
-                .map_err(|_| Error::<T>::InvalidUniquenessProof)?;
-            public_inputs_vec.push(nullifier_bounded);
-            
-            let commitment_bounded: BoundedVec<u8, ConstU32<64>> = commitment.as_bytes().to_vec()
-                .try_into()
-                .map_err(|_| Error::<T>::InvalidUniquenessProof)?;
-            public_inputs_vec.push(commitment_bounded);
-            
-            let bounded_inputs: BoundedVec<BoundedVec<u8, ConstU32<64>>, ConstU32<16>> = 
-                public_inputs_vec.try_into()
-                .map_err(|_| Error::<T>::InvalidUniquenessProof)?;
-
-            // Create ZkProof struct for verification
-            let zk_proof = pallet_zk_credentials::ZkProof {
-                proof_type: pallet_zk_credentials::ProofType::Personhood,
-                proof_data: bounded_proof_data,
-                public_inputs: bounded_inputs,
-                credential_hash: H256::zero(), // Not used for personhood proofs
-                created_at: <T as Config>::TimeProvider::now().saturated_into::<u64>(),
-                nonce: H256::random(), // Generate random nonce for this verification
-            };
-
-            // Call the verification method from pallet-zk-credentials
-            pallet_zk_credentials::Pallet::<T::ZkCredentials>::verify_proof_internal(&zk_proof)
-                .map_err(|_| Error::<T>::InvalidUniquenessProof)?;
 
             Ok(())
         }
 
-        /// Verify recovery proof (ZK proof linking old and new identity)
+        /// Verify ZK proof that biometric is valid and unique
+        fn verify_biometric_zk_proof(
+            nullifier: &H256,
+            commitment: &H256,
+            proof_bytes: &[u8],
+        ) -> Result<(), Error<T>> {
+            // Convert to bounded format
+            let bounded_proof: BoundedVec<u8, ConstU32<4096>> = proof_bytes
+                .to_vec()
+                .try_into()
+                .map_err(|_| Error::<T>::InvalidUniquenessProof)?;
+            
+            // Public inputs: nullifier and commitment
+            // These are visible to everyone, but don't reveal biometric
+            let mut public_inputs = Vec::new();
+            
+            // Add nullifier as public input
+            public_inputs.push(
+                nullifier.as_bytes().to_vec()
+                    .try_into()
+                    .map_err(|_| Error::<T>::InvalidUniquenessProof)?
+            );
+            
+            // Add commitment as public input
+            public_inputs.push(
+                commitment.as_bytes().to_vec()
+                    .try_into()
+                    .map_err(|_| Error::<T>::InvalidUniquenessProof)?
+            );
+            
+            let bounded_inputs: BoundedVec<BoundedVec<u8, ConstU32<64>>, ConstU32<16>> = 
+                public_inputs
+                    .try_into()
+                    .map_err(|_| Error::<T>::InvalidUniquenessProof)?;
+            
+            // Create ZK proof structure
+            let zk_proof = pallet_zk_credentials::ZkProof {
+                proof_type: pallet_zk_credentials::ProofType::Personhood,
+                proof_data: bounded_proof,
+                public_inputs: bounded_inputs,
+                credential_hash: *commitment, // Use commitment as credential hash
+                created_at: <T as Config>::TimeProvider::now().saturated_into::<u64>(),
+                nonce: *nullifier, // Use nullifier as nonce to prevent replay
+            };
+            
+            // Verify via ZK credentials pallet
+            pallet_zk_credentials::Pallet::<T::ZkCredentials>::verify_proof_internal(&zk_proof)
+                .map_err(|_| Error::<T>::InvalidUniquenessProof)?;
+            
+            Ok(())
+        }
+
+        /// CROSS-CHAIN VERIFICATION: Generate Merkle proof of registration
+        /// This allows other parachains to verify someone is registered
+        /// without needing to query this chain's full state
+        pub fn generate_existence_proof(nullifier: &H256) -> Result<Vec<Vec<u8>>, Error<T>> {
+            use sp_trie::{generate_trie_proof, LayoutV1};
+            use sp_core::Blake2Hasher;
+            
+            // 1. Ensure nullifier exists
+            ensure!(
+                PersonhoodRegistry::<T>::contains_key(nullifier),
+                Error::<T>::PersonhoodProofNotFound
+            );
+            
+            // 2. Get storage root hash
+            let root = sp_io::storage::root(sp_runtime::StateVersion::V1);
+            
+            // 3. Build storage key for this nullifier
+            // This is how Substrate stores the PersonhoodRegistry map
+            let storage_key = Self::storage_key_for_nullifier(nullifier);
+            
+            // 4. Generate trie proof
+            // This creates a minimal proof that this key exists in the state trie
+            let backend = sp_state_machine::Backend::<Blake2Hasher>::as_trie_backend()
+                .ok_or(Error::<T>::InvalidUniquenessProof)?;
+            
+            let proof = generate_trie_proof::<LayoutV1<Blake2Hasher>, _, _, _>(
+                backend,
+                root,
+                &[&storage_key[..]]
+            ).map_err(|_| Error::<T>::InvalidUniquenessProof)?;
+            
+            Ok(proof.into_iter_nodes().map(|n| n.to_vec()).collect())
+        }
+        
+        /// CROSS-CHAIN VERIFICATION: Verify Merkle proof from another chain
+        /// Allows this chain to verify someone is registered on another parachain
+        pub fn verify_existence_proof(
+            nullifier: &H256,
+            state_root: H256,
+            proof_nodes: Vec<Vec<u8>>,
+        ) -> Result<bool, Error<T>> {
+            use sp_trie::{verify_trie_proof, LayoutV1};
+            use sp_core::Blake2Hasher;
+            
+            // Build storage key
+            let storage_key = Self::storage_key_for_nullifier(nullifier);
+            
+            // Verify the proof
+            let result = verify_trie_proof::<LayoutV1<Blake2Hasher>, _, _, _>(
+                &state_root,
+                &proof_nodes,
+                &[(storage_key.as_slice(), None)], // Checking key exists
+            );
+            
+            match result {
+                Ok(_) => Ok(true),
+                Err(_) => Ok(false),
+            }
+        }
+        
+        /// Helper: Generate storage key for a nullifier
+        /// This matches Substrate's storage key format
+        fn storage_key_for_nullifier(nullifier: &H256) -> Vec<u8> {
+            use sp_io::hashing::twox_128;
+            use frame_support::storage::generator::StorageMap as _;
+            
+            // Format: twox128("ProofOfPersonhood") + twox128("PersonhoodRegistry") + blake2_128(nullifier) + nullifier
+            let mut key = Vec::new();
+            
+            // Pallet prefix
+            key.extend_from_slice(&twox_128(b"ProofOfPersonhood"));
+            
+            // Storage item prefix
+            key.extend_from_slice(&twox_128(b"PersonhoodRegistry"));
+            
+            // Key hash (Blake2_128Concat uses Blake2_128 + original key)
+            key.extend_from_slice(&sp_io::hashing::blake2_128(nullifier.as_bytes()));
+            key.extend_from_slice(nullifier.as_bytes());
+            
+            key
+        }
+
+        /// Enhanced recovery proof verification with ZK
         fn verify_recovery_proof(
             old_did: &H256,
             new_nullifier: &H256,
-            proof: &[u8],
+            proof_bytes: &[u8],
         ) -> Result<(), Error<T>> {
-            if proof.is_empty() || proof.len() > 1024 {
-                return Err(Error::<T>::InvalidRecoveryProof);
-            }
+            // Basic validation
+            ensure!(
+                !proof_bytes.is_empty() && proof_bytes.len() <= 4096,
+                Error::<T>::InvalidRecoveryProof
+            );
 
-            let mut data = Vec::new();
-            data.extend_from_slice(old_did.as_bytes());
-            data.extend_from_slice(new_nullifier.as_bytes());
-            data.extend_from_slice(proof);
-            
-            let proof_hash = sp_io::hashing::blake2_256(&data);
-            
-            if proof_hash == [0u8; 32] {
-                return Err(Error::<T>::InvalidRecoveryProof);
+            // Get old nullifier
+            let old_nullifier = DidToNullifier::<T>::get(old_did)
+                .ok_or(Error::<T>::DidNotFound)?;
+
+            // If ZK proof provided, verify it
+            if proof_bytes.len() > 64 {
+                let bounded_proof: BoundedVec<u8, ConstU32<4096>> = proof_bytes
+                    .to_vec()
+                    .try_into()
+                    .map_err(|_| Error::<T>::InvalidRecoveryProof)?;
+                
+                // Public inputs: old_nullifier and new_nullifier
+                let mut public_inputs = Vec::new();
+                public_inputs.push(
+                    old_nullifier.as_bytes().to_vec()
+                        .try_into()
+                        .map_err(|_| Error::<T>::InvalidRecoveryProof)?
+                );
+                public_inputs.push(
+                    new_nullifier.as_bytes().to_vec()
+                        .try_into()
+                        .map_err(|_| Error::<T>::InvalidRecoveryProof)?
+                );
+                
+                let bounded_inputs: BoundedVec<BoundedVec<u8, ConstU32<64>>, ConstU32<16>> = 
+                    public_inputs
+                        .try_into()
+                        .map_err(|_| Error::<T>::InvalidRecoveryProof)?;
+                
+                let zk_proof = pallet_zk_credentials::ZkProof {
+                    proof_type: pallet_zk_credentials::ProofType::Recovery,
+                    proof_data: bounded_proof,
+                    public_inputs: bounded_inputs,
+                    credential_hash: *old_did,
+                    created_at: <T as Config>::TimeProvider::now().saturated_into::<u64>(),
+                    nonce: *new_nullifier,
+                };
+                
+                // Verify the recovery proof links old and new identities
+                pallet_zk_credentials::Pallet::<T::ZkCredentials>::verify_proof_internal(&zk_proof)
+                    .map_err(|_| Error::<T>::InvalidRecoveryProof)?;
+            } else {
+                // Fallback: Simple hash-based verification (less secure)
+                let mut data = Vec::new();
+                data.extend_from_slice(old_did.as_bytes());
+                data.extend_from_slice(new_nullifier.as_bytes());
+                data.extend_from_slice(proof_bytes);
+                
+                let proof_hash = sp_io::hashing::blake2_256(&data);
+                
+                ensure!(
+                    proof_hash != [0u8; 32],
+                    Error::<T>::InvalidRecoveryProof
+                );
             }
 
             Ok(())
         }
+
+        /// Batch verify multiple existence proofs (for cross-chain efficiency)
+        pub fn batch_verify_existence_proofs(
+            nullifiers: Vec<H256>,
+            state_root: H256,
+            proof_nodes: Vec<Vec<u8>>,
+        ) -> Result<Vec<bool>, Error<T>> {
+            use sp_trie::{verify_trie_proof, LayoutV1};
+            use sp_core::Blake2Hasher;
+            
+            let keys: Vec<Vec<u8>> = nullifiers
+                .iter()
+                .map(|n| Self::storage_key_for_nullifier(n))
+                .collect();
+            
+            let key_refs: Vec<(&[u8], Option<&[u8]>)> = keys
+                .iter()
+                .map(|k| (k.as_slice(), None))
+                .collect();
+            
+            let result = verify_trie_proof::<LayoutV1<Blake2Hasher>, _, _, _>(
+                &state_root,
+                &proof_nodes,
+                &key_refs,
+            );
+            
+            match result {
+                Ok(items) => Ok(items.into_iter().map(|(_, v)| v.is_some()).collect()),
+                Err(_) => Ok(vec![false; nullifiers.len()]),
+            }
+        }
+    }
 
         /// Validate nullifier format
         fn validate_nullifier(nullifier: &H256) -> bool {

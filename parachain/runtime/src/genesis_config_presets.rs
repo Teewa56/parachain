@@ -48,34 +48,33 @@ fn testnet_genesis(
 	root: AccountId,
 	id: ParaId,
 ) -> Value {
-	build_struct_json_patch!(RuntimeGenesisConfig {
-		balances: BalancesConfig {
-			balances: endowed_accounts
-				.iter()
-				.cloned()
-				.map(|k| (k, 1u128 << 60))
-				.collect::<Vec<_>>(),
-		},
-		parachain_info: ParachainInfoConfig { parachain_id: id },
-		collator_selection: CollatorSelectionConfig {
-			invulnerables: invulnerables.iter().cloned().map(|(acc, _)| acc).collect::<Vec<_>>(),
-			candidacy_bond: EXISTENTIAL_DEPOSIT * 16,
-		},
-		session: SessionConfig {
-			keys: invulnerables
-				.into_iter()
-				.map(|(acc, aura)| {
-					(
-						acc.clone(),                 // account id
-						acc,                         // validator id
-						template_session_keys(aura), // session keys
-					)
-				})
-				.collect::<Vec<_>>(),
-		},
-		polkadot_xcm: PolkadotXcmConfig { safe_xcm_version: Some(SAFE_XCM_VERSION) },
-		sudo: SudoConfig { key: Some(root) },
-	})
+	serde_json::json!({
+        "balances": {
+            "balances": endowed_accounts
+                .iter()
+                .map(|k| (k.clone(), 1u128 << 60))
+                .collect::<Vec<_>>()
+        },
+        "parachainInfo": {
+            "parachainId": id
+        },
+        "collatorSelection": {
+            "invulnerables": invulnerables.iter().map(|(acc, _)| acc.clone()).collect::<Vec<_>>(),
+            "candidacyBond": EXISTENTIAL_DEPOSIT * 16
+        },
+        "session": {
+            "keys": invulnerables
+                .into_iter()
+                .map(|(acc, aura)| (acc.clone(), acc, template_session_keys(aura)))
+                .collect::<Vec<_>>()
+        },
+        "polkadotXcm": {
+            "safeXcmVersion": SAFE_XCM_VERSION
+        },
+        "sudo": {
+            "key": root
+        }
+    })
 }
 
 fn local_testnet_genesis() -> Value {

@@ -21,7 +21,13 @@ sp-std = { workspace = true }
 sp-core = { workspace = true, default-features = false }
 sp-io = { workspace = true }
 sp-runtime = { workspace = true }
-pallet-identity-registry = { workspace = true }
+sp-trie = { version = "41.1.0", default-features = false }
+sp-state-machine = { version = "0.28.0", default-features = false }
+trie-db = { version = "0.30.0", default-features = false }
+hash-db = { version = "0.16.0", default-features = false }
+memory-db = { version = "0.34.0", default-features = false }
+pallet-identity-registry = { workspace = true, default-features = false }
+pallet-zk-credentials = { workspace = true, default-features = false }
 
 [dev-dependencies]
 sp-io = { workspace = true }
@@ -39,6 +45,12 @@ std = [
     "sp-io/std",
     "sp-runtime/std",
     "pallet-identity-registry/std",
+    "pallet-zk-credentials/std",
+    "sp-trie/std",
+    "sp-state-machine/std",
+    "trie-db/std",
+    "hash-db/std",
+    "memory-db/std",
 ]
 runtime-benchmarks = ["frame-support/runtime-benchmarks"]
 try-runtime = ["frame-support/try-runtime"]

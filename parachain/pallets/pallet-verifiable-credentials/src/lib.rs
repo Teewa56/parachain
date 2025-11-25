@@ -329,29 +329,27 @@ pub mod pallet {
     /// Voting period in blocks (7 days)
     const GOVERNANCE_VOTING_PERIOD_BLOCKS: u32 = 100_800;
 
+    parameter_types! {
+        pub const MaxCredentialCleanupPerBlock: u32 = 10;
+    }
+
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
-        /// Called at the beginning of every block
         fn on_initialize(_n: BlockNumberFor<T>) -> Weight {
-            // 1. Convert block number to timestamp (approximate)
-            let now = <T as pallet::Config>::TimeProvider::now().saturated_into::<u64>();
+            let now = <T as pallet::Config>::TimeProvider::now()
+                .saturated_into::<u64>();
             
-            // 2. Call the cleanup function
-            let items_removed = Self::cleanup_expired_credentials(now);
+            // Limit cleanup to prevent DoS
+            let expired_ids = Expiries::<T>::get(now / 6);
+            let to_clean = expired_ids.iter()
+                .take(T::MaxCredentialCleanupPerBlock::get() as usize);
             
-            // 3. Return the weight used
-            // (reads: 1 per block for Expiries + reads/writes per item removed)
-            let db_weight = T::DbWeight::get();
-            let base_weight = db_weight.reads(1); 
+            let items_removed = Self::cleanup_credentials(to_clean);
             
-            let cleanup_weight = if items_removed > 0 {
-                // Cost per item: 1 read (credential), 2 writes (Subject/Issuer lists), 1 write (Credential remove)
-                db_weight.reads_writes(1, 3).saturating_mul(items_removed as u64)
-            } else {
-                Weight::zero()
-            };
-
-            base_weight.saturating_add(cleanup_weight)
+            T::DbWeight::get().reads_writes(
+                1 + items_removed as u64,
+                items_removed as u64 * 3
+            )
         }
     }
 

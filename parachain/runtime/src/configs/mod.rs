@@ -346,6 +346,7 @@ impl pallet_verifiable_credentials::Config for Runtime {
 	type MaxFieldSize = ConstU32<256>;
     type MaxFields = ConstU32<16>;
     type MaxFieldsToReveal = ConstU32<16>;
+	type MaxCredentialCleanupPerBlock = ConstU32<10>; 
 }
 
 impl pallet_zk_credentials::Config for Runtime {
