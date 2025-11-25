@@ -22,11 +22,8 @@ pub mod pallet {
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
-        /// Runtime event type used by this pallet
-        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
-
         type TimeProvider: Time<Moment = u64>;
-        type WeightInfo: WeightInfo; // reference trait directly
+        type WeightInfo: WeightInfo;
     }
 
     /// Identity information for a DID
