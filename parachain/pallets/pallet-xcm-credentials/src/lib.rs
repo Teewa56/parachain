@@ -429,28 +429,25 @@ pub mod pallet {
             request_hash: H256,
         ) -> DispatchResult {
             let destination = Location::new(
-                1, // parent = 1
+                1,
                 [Junction::Parachain(target_para_id)]
             );
 
             let encoded_call = Self::encode_verification_request_call(credential_hash, request_hash);
 
-            let double = encoded_call.try_into().map_err(|_| Error::<T>::EncodingError)?;
+            let double: xcm::DoubleEncoded<()> = encoded_call
+                .try_into()
+                .map_err(|_| Error::<T>::EncodingError)?;
+            
             let message = Xcm(vec![
                 Instruction::Transact {
                     origin_kind: OriginKind::Native,
-                    fallback_max_weight: {
-                        let fee = T::DefaultXcmFee::get();
-                        Some(xcm::v3::Weight::from_parts(fee.ref_time(), fee.proof_size()))
-                    },
                     call: double,
                 }
             ]);
 
-            <T::XcmRouter as SendXcm>::deliver(
-                destination,
-                message
-            ).map_err(|_| Error::<T>::XcmSendFailed)?;
+            T::XcmRouter::deliver(destination, message)
+                .map_err(|_| Error::<T>::XcmSendFailed)?;
 
             Ok(())
         }

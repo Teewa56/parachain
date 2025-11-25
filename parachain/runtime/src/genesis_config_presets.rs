@@ -92,10 +92,9 @@ fn local_testnet_genesis() -> Value {
 }
 
 fn development_config_genesis() -> Value {
-	let alice_did = get_did_hash("did:src:alice");
+    let alice_did = get_did_hash("did:src:alice");
     let bob_did = get_did_hash("did:src:bob");
     
-    // Use Keyring for cleaner dev accounts
     let alice = Sr25519Keyring::Alice.to_account_id();
     let root_key = alice.clone();
     let mut invulnerables = vec![
@@ -112,9 +111,6 @@ fn development_config_genesis() -> Value {
         Sr25519Keyring::Ferdie.to_account_id(),
     ];
 
-    // Construct the JSON blob
-    // IMPORTANT: The keys (e.g., "verifiableCredentials") MUST match the snake_case name 
-    // of the pallet in your construct_runtime! macro in lib.rs.
     serde_json::json!({
         "system": {},
         "balances": {
@@ -142,9 +138,9 @@ fn development_config_genesis() -> Value {
         "sudo": {
             "key": root_key,
         },
-        "polkadotXcm": {},
-        
-        // --- CUSTOM PALLETS ---
+        "polkadotXcm": {
+            "safeXcmVersion": Some(3)
+        },
         "verifiableCredentials": {
             "trustedIssuers": [
                 [alice_did, "Education"],
@@ -156,7 +152,8 @@ fn development_config_genesis() -> Value {
                 [2000, true],
                 [3000, true]
             ]
-        }
+        },
+        "proofOfPersonhood": {}
     })
 }
 

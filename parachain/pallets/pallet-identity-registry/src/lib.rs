@@ -22,7 +22,10 @@ pub mod pallet {
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
-        type TimeProvider: Time<Moment=u64>;
+        /// Runtime event type used by this pallet
+        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
+
+        type TimeProvider: Time<Moment = u64>;
         type WeightInfo: WeightInfo; // reference trait directly
     }
 

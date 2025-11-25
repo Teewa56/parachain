@@ -95,7 +95,7 @@ pub mod pallet {
     /// Storage: Personhood registry by nullifier
     #[pallet::storage]
     #[pallet::getter(fn personhood_registry)]
-    pub type PersonhoodRegistry<T: Config> = StorageMap
+    pub type PersonhoodRegistry<T: Config> = StorageMap<
         _,
         Blake2_128Concat,
         H256, // nullifier
@@ -106,7 +106,7 @@ pub mod pallet {
     /// Storage: Map DID to nullifier
     #[pallet::storage]
     #[pallet::getter(fn did_to_nullifier)]
-    pub type DidToNullifier<T: Config> = StorageMap
+    pub type DidToNullifier<T: Config> = StorageMap<
         _,
         Blake2_128Concat,
         H256, // DID
@@ -117,7 +117,7 @@ pub mod pallet {
     /// Storage: Pending recovery requests
     #[pallet::storage]
     #[pallet::getter(fn pending_recoveries)]
-    pub type PendingRecoveries<T: Config> = StorageMap
+    pub type PendingRecoveries<T: Config> = StorageMap<
         _,
         Blake2_128Concat,
         H256, // DID
@@ -128,7 +128,7 @@ pub mod pallet {
     /// Storage: Guardian approvals for recovery
     #[pallet::storage]
     #[pallet::getter(fn guardian_approvals)]
-    pub type GuardianApprovals<T: Config> = StorageMap
+    pub type GuardianApprovals<T: Config> = StorageMap<
         _,
         Blake2_128Concat,
         H256, // DID
@@ -139,7 +139,7 @@ pub mod pallet {
     /// Storage: Registration cooldown
     #[pallet::storage]
     #[pallet::getter(fn registration_cooldown)]
-    pub type RegistrationCooldown<T: Config> = StorageMap
+    pub type RegistrationCooldown<T: Config> = StorageMap<
         _,
         Blake2_128Concat,
         H256, // nullifier
@@ -150,7 +150,7 @@ pub mod pallet {
     /// Storage: Last activity timestamp for each DID
     #[pallet::storage]
     #[pallet::getter(fn last_activity)]
-    pub type LastActivity<T: Config> = StorageMap
+    pub type LastActivity<T: Config> = StorageMap<
         _,
         Blake2_128Concat,
         H256, // DID

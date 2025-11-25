@@ -37,56 +37,61 @@ pallet-xcm-credentials = { path = "./pallets/pallet-xcm-credentials", default-fe
 pallet-zk-credentials = { path = "./pallets/pallet-zk-credentials", default-features = false }
 pallet-proof-of-personhood = { path = "./pallets/pallet-proof-of-personhood", default-features = false }
 
-# FRAME and Substrate primitives
-frame-support = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.0", package = "frame-support", default-features = false }
-frame-system = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.0", package = "frame-system", default-features = false }
-frame-executive = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.0", package = "frame-executive", default-features = false }
-frame-benchmarking = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.0", package = "frame-benchmarking", default-features = false }
-frame-system-benchmarking = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.0", package = "frame-system-benchmarking", default-features = false }
-frame-system-rpc-runtime-api = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.0", package = "frame-system-rpc-runtime-api", default-features = false }
-frame-try-runtime = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.0", package = "frame-try-runtime", default-features = false }
+polkadot-sdk = { version = "2503.0.1", default-features = false }
 
-sp-core = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.0", package = "sp-core", default-features = false }
-sp-std = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.0", package = "sp-std" }
-sp-io = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.0", package = "sp-io" }
-sp-api = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.0", package = "sp-api" }
-sp-block-builder = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.0", package = "sp-block-builder" }
-sp-inherents = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.0", package = "sp-inherents" }
-sp-offchain = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.0", package = "sp-offchain" }
-sp-session = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.0", package = "sp-session" }
-sp-transaction-pool = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.0", package = "sp-transaction-pool" }
-sp-version = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.0", package = "sp-version" }
-sp-runtime = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.0", package = "sp-runtime" }
+# FRAME and Substrate primitives
+frame-support = { version = "39.0.0", default-features = false }
+frame-system = { version = "39.0.0", default-features = false }
+frame-executive = { version = "39.0.0", default-features = false }
+frame-benchmarking = { version = "39.0.0", default-features = false }
+frame-system-benchmarking = { version = "39.0.0", default-features = false }
+frame-system-rpc-runtime-api = { version = "37.0.0", default-features = false }
+frame-try-runtime = { version = "0.45.0", default-features = false }
+
+sp-core = { version = "34.0.0", default-features = false }
+sp-std = { version = "14.0.0", default-features = false }
+sp-io = { version = "38.0.0", default-features = false }
+sp-api = { version = "34.0.0", default-features = false }
+sp-block-builder = { version = "34.0.0", default-features = false }
+sp-inherents = { version = "34.0.0", default-features = false }
+sp-offchain = { version = "34.0.0", default-features = false }
+sp-session = { version = "35.0.0", default-features = false }
+sp-transaction-pool = { version = "34.0.0", default-features = false }
+sp-version = { version = "37.0.0", default-features = false }
+sp-runtime = { version = "39.0.0", default-features = false }
 
 # Standard pallets
-pallet-balances = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.0", package = "pallet-balances" }
-pallet-sudo = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.0", package = "pallet-sudo" }
-pallet-timestamp = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.0", package = "pallet-timestamp" }
-pallet-transaction-payment = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.0", package = "pallet-transaction-payment" }
-pallet-transaction-payment-rpc-runtime-api = { git = "https://github.com/paritytech/polkadot-sdk", tag = "polkadot-v1.19.0", package = "pallet-transaction-payment-rpc-runtime-api" }
+pallet-balances = { version = "39.0.0", default-features = false }
+pallet-sudo = { version = "39.0.0", default-features = false }
+pallet-timestamp = { version = "38.0.0", default-features = false }
+pallet-transaction-payment = { version = "39.0.0", default-features = false }
+pallet-transaction-payment-rpc-runtime-api = { version = "39.0.0", default-features = false }
 
+# XCM - Consistent versions
 xcm = { version = "15.0.1", package = "staging-xcm", default-features = false }
-xcm-builder = { version = "18.0.1", package = "staging-xcm-builder", default-features = false }
-xcm-executor = {version = "18.0.1", package = "staging-xcm-executor", default-features = false }
-pallet-xcm = { version = "18.0.0", default-features = false }
+xcm-builder = { version = "17.0.0", package = "staging-xcm-builder", default-features = false }
+xcm-executor = { version = "17.0.0", package = "staging-xcm-executor", default-features = false }
+pallet-xcm = { version = "17.0.0", default-features = false }
 
+# Cumulus
+cumulus-pallet-parachain-system = { version = "0.17.0", default-features = false }
+cumulus-primitives-core = { version = "0.15.0", default-features = false }
+
+# Common dependencies
 clap = { version = "4.5.13" }
 color-print = { version = "0.3.4" }
 docify = { version = "0.2.9" }
 futures = { version = "0.3.31" }
 jsonrpsee = { version = "0.24.3" }
 log = { version = "0.4.22", default-features = false }
-polkadot-sdk = { version = "2503.0.1", default-features = false }
 prometheus-endpoint = { version = "0.17.2", package = "substrate-prometheus-endpoint" }
 serde = { version = "1.0.214", default-features = false, features = ["derive"] }
 codec = { version = "3.7.4", default-features = false, package = "parity-scale-codec", features = ["derive"] }
-cumulus-pallet-parachain-system = { version = "0.20.0", default-features = false }
 hex-literal = { version = "0.4.1", default-features = false }
 scale-info = { version = "2.11.6", default-features = false }
 serde_json = { version = "1.0.132", default-features = false }
 smallvec = { version = "1.11.0", default-features = false }
-substrate-wasm-builder = { version = "26.0.1", default-features = false }
-cumulus-primitives-core = { version = "0.21.0", default-features = false }
+substrate-wasm-builder = { version = "24.0.0", default-features = false }
 
 [profile.release]
 opt-level = 3

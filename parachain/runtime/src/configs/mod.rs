@@ -370,7 +370,6 @@ impl pallet_credential_governance::Config for Runtime {
 }
 
 parameter_types! {
-    // 500 Billion weight units 
     pub const DefaultXcmFee: Weight = Weight::from_parts(500_000_000_000, 0);
 }
 
@@ -378,8 +377,10 @@ impl pallet_xcm_credentials::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type TimeProvider = Timestamp;
     type ParachainId = ParachainInfo;
-	type DefaultXcmFee = DefaultXcmFee;
-	type ParachainIdentity = pallet_xcm::EnsureXcm<Everything>;
+    type XcmRouter = XcmRouter;
+    type XcmOriginToTransactDispatchOrigin = XcmOriginToTransactDispatchOrigin;
+    type ParachainIdentity = pallet_xcm::EnsureXcm<Everything>;
+    type DefaultXcmFee = DefaultXcmFee;
     type WeightInfo = pallet_xcm_credentials::weights::SubstrateWeight<Runtime>;
 }
 

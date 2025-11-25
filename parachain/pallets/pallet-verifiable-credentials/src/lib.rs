@@ -5,9 +5,6 @@ mod benchmarking;
 
 pub mod weights;
 
-#[cfg(feature = "std")]
-use serde::{Deserialize, Serialize};
-
 #[frame_support::pallet]
 pub mod pallet {
     use frame_support::{
@@ -26,11 +23,16 @@ pub mod pallet {
     use sp_runtime::traits::SaturatedConversion;
     use sp_std::marker::PhantomData;
 
+    
+    #[cfg(feature = "std")]
+    use serde::{Deserialize, Serialize};
+
     #[pallet::pallet]
     pub struct Pallet<T>(_);
 
     #[pallet::config]
     pub trait Config: frame_system::Config + pallet_identity_registry::pallet::Config {
+        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         type TimeProvider: Time;
         type ZkCredentials: pallet_zk_credentials::pallet::Config;
         type WeightInfo: WeightInfo;
@@ -330,9 +332,9 @@ pub mod pallet {
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
         /// Called at the beginning of every block
-        fn on_initialize(n: BlockNumberFor<T>) -> Weight {
-            // 1. Convert block number to timestamp (approximate) or just use block number
-            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
+        fn on_initialize(_n: BlockNumberFor<T>) -> Weight {
+            // 1. Convert block number to timestamp (approximate)
+            let now = <T as pallet::Config>::TimeProvider::now().saturated_into::<u64>();
             
             // 2. Call the cleanup function
             let items_removed = Self::cleanup_expired_credentials(now);
@@ -395,8 +397,9 @@ pub mod pallet {
                 Error::<T>::InvalidCredentialStatus
             );
 
-            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
+            let now = <T as pallet::Config>::TimeProvider::now().saturated_into::<u64>();
 
+            // 5. Convert fields to BoundedVec properly
             let inner_fields_result: Result<Vec<BoundedVec<u8, T::MaxFieldSize>>, Error<T>> = fields
                 .into_iter()
                 .map(|f| {
@@ -407,36 +410,33 @@ pub mod pallet {
 
             let inner_fields = inner_fields_result?;
 
-            // Convert outer Vec -> BoundedVec<BoundedVec<..>, T::MaxFields>
             let bounded_fields: BoundedVec<BoundedVec<u8, T::MaxFieldSize>, T::MaxFields> =
-                BoundedVec::try_from(inner_fields).map_err(|_| Error::<T>::TooManyFields)?;
+                BoundedVec::try_from(inner_fields)
+                    .map_err(|_| Error::<T>::TooManyFields)?;
 
-            // required_fields -> BoundedVec<bool, T::MaxFields>
             let bounded_required: BoundedVec<bool, T::MaxFields> =
-                BoundedVec::try_from(required_fields).map_err(|_| Error::<T>::TooManyFields)?;
+                BoundedVec::try_from(required_fields)
+                    .map_err(|_| Error::<T>::TooManyFields)?;
 
-            // fields_to_reveal -> BoundedVec<u32, T::MaxFieldsToReveal>
             let bounded_reveal: BoundedVec<u32, T::MaxFieldsToReveal> =
-                BoundedVec::try_from(fields_to_reveal).map_err(|_| Error::<T>::TooManyFieldsToReveal)?;
+                BoundedVec::try_from(fields_to_reveal)
+                    .map_err(|_| Error::<T>::TooManyFieldsToReveal)?;
 
-            // -------------------------
-            // Consistency checks
-            // -------------------------
-            // fields and required_fields must have same length
+            // 6. Consistency checks
             ensure!(
                 bounded_fields.len() == bounded_required.len(),
                 Error::<T>::InvalidFieldsLength
             );
 
-            // every reveal index must be < bounded_fields.len()
             let fields_len_u32: u32 = bounded_fields.len()
                 .try_into()
-                .expect("bounded_fields.len() fits into u32; MaxFields is u32-limited");
+                .expect("bounded_fields.len() fits into u32");
+
             for idx in bounded_reveal.iter() {
                 ensure!(*idx < fields_len_u32, Error::<T>::InvalidRevealIndex);
             }
 
-            // 5. Create Credential Object
+            // 7. Create Credential
             let credential = Credential::<T> {
                 subject: subject_did,
                 issuer: issuer_did,
@@ -454,30 +454,29 @@ pub mod pallet {
 
             let credential_id = Self::generate_credential_id(&credential);
 
-            // 6. Insert into Storage
+            // 8. Insert into Storage
             Credentials::<T>::insert(&credential_id, credential);
 
-            // 7. Update Subject's List
+            // 9. Update Subject's List
             CredentialsOf::<T>::try_mutate(&subject_did, |creds| -> DispatchResult {
                 creds.try_push(credential_id)
                     .map_err(|_| Error::<T>::TooManyCredentials)?;
                 Ok(())
             })?;
 
-            // 8. Update Issuer's List
+            // 10. Update Issuer's List
             IssuedBy::<T>::try_mutate(&issuer_did, |creds| -> DispatchResult {
                 creds.try_push(credential_id)
                     .map_err(|_| Error::<T>::TooManyCredentials)?;
                 Ok(())
             })?;
 
+            // 11. Track expiration
             if expires_at > 0 {
-                // Convert timestamp (seconds) to approximate block number.
-                // Assuming 6 seconds per block: Block = Time / 6
-                let expiry_block = expires_at / 6; 
+                let expiry_block = expires_at / 6;
                 
                 Expiries::<T>::try_mutate(expiry_block, |list| -> DispatchResult {
-                    let _ = list.try_push(credential_id); 
+                    let _ = list.try_push(credential_id);
                     Ok(())
                 })?;
             }
@@ -530,7 +529,7 @@ pub mod pallet {
             let mut credential = Credentials::<T>::get(&credential_id)
                 .ok_or(Error::<T>::CredentialNotFound)?;
 
-            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
+            let now = <T as crate::pallet::Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
             if credential.expires_at > 0 && now.saturating_sub(credential.expires_at) > 0 {
                 credential.status = CredentialStatus::Expired;
                 credential.metadata_hash = Self::generate_metadata_hash(
@@ -680,7 +679,7 @@ pub mod pallet {
                 Error::<T>::TooManyFieldsRequested
             );
 
-            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
+            let now = <T as crate::pallet::Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
 
             let disclosure_id = Self::generate_disclosure_id(
                 &credential_id,
@@ -803,7 +802,7 @@ pub mod pallet {
             )?;
 
             // Step 5: Verify the proof is fresh
-            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
+            let now = <T as crate::pallet::Config>::TimeProvider::now().saturated_into::<u64>();
             if now.saturating_sub(credential.issued_at) > 86400 {  // 24 hours
                 return Err(Error::<T>::ProofTooOld);
             }
@@ -858,7 +857,7 @@ pub mod pallet {
             let type_hash = Self::hash_credential_type(credential_type);
             inputs.push(type_hash.as_bytes().to_vec());
 
-            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
+            let now = <T as crate::pallet::Config>::TimeProvider::now().saturated_into::<u64>();
             let mut timestamp_bytes = vec![0u8; 32];
             timestamp_bytes[24..32].copy_from_slice(&now.to_le_bytes());
             inputs.push(timestamp_bytes);
@@ -988,7 +987,7 @@ pub mod pallet {
                     return false;
                 }
 
-                let now = <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
+                let now = <T as crate::pallet::Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
                 if credential.expires_at > 0 && now.saturating_sub(credential.expires_at) > 0 {
                     return false;
                 }
@@ -1250,7 +1249,7 @@ pub mod pallet {
     impl<T: Config> Pallet<T> {
         /// Validate that expiration timestamp is reasonable
         fn validate_expiration_timestamp(expires_at: u64) -> bool {
-            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
+            let now = <T as crate::pallet::Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
             
             // Expiration must be in future (if set)
             if expires_at != 0 && expires_at <= now {
