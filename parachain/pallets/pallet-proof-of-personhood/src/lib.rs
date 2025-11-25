@@ -10,10 +10,13 @@ pub mod weights;
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
+    use sp_runtime::traits::Saturating;
+    use pallet_identity_registry::pallet::Identities;
     use frame_support::{
         pallet_prelude::*,
         traits::{Currency, ReservableCurrency, Time},
     };
+    use sp_runtime::SaturatedConversion;
     use frame_system::pallet_prelude::*;
     use sp_std::vec::Vec;
     use sp_core::H256;
@@ -23,6 +26,7 @@ pub mod pallet {
     use frame_support::BoundedVec;
     use pallet_zk_credentials;
     use sp_trie::{generate_trie_proof, verify_trie_proof, LayoutV1, TrieDBBuilder};
+    use codec::DecodeWithMemTracking;
 
     type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
@@ -59,7 +63,7 @@ pub mod pallet {
     }
 
     /// Personhood proof structure
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     #[scale_info(skip_type_params(T))]
     pub struct PersonhoodProof<T: Config> {
         /// Commitment to biometric (NOT the biometric itself)
@@ -77,7 +81,7 @@ pub mod pallet {
     }
 
     /// Progressive recovery request with multi-layered evidence
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     #[scale_info(skip_type_params(T))]
     pub struct ProgressiveRecoveryRequest<T: Config> {
         /// Original DID being recovered
@@ -111,7 +115,7 @@ pub mod pallet {
     /// Cross-biometric proof structure
     /// Proves: "nullifier_A and nullifier_B belong to the same person"
     /// WITHOUT revealing the biometrics
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, DecodeWithMemTracking)]
     pub struct CrossBiometricProof {
         /// First biometric nullifier
         pub nullifier_a: H256,
@@ -127,7 +131,7 @@ pub mod pallet {
         /// Circuit proves: Hash(bio_a) == nullifier_a AND Hash(bio_b) == nullifier_b
         ///                 AND bio_a and bio_b pass liveness checks
         ///                 AND bio_a and bio_b are from same capture session
-        pub zk_binding_proof: BoundedVec<u8, ConstU32<4096>>,
+        pub zk_binding_proof: BoundedVec<u8, ConstU32<8192>>,
         /// Session token (prevents replay attacks)
         pub session_id: H256,
         /// Timestamp when biometrics were captured
@@ -135,7 +139,7 @@ pub mod pallet {
     }
 
     /// Recovery request structure
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     #[scale_info(skip_type_params(T))]
     pub struct RecoveryRequest<T: Config> {
         /// Original DID being recovered
@@ -172,7 +176,7 @@ pub mod pallet {
     >;
 
     /// Guardian relationship with reputation weighting
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     #[scale_info(skip_type_params(T))]
     pub struct GuardianRelationship<T: Config> {
         pub guardian: T::AccountId,
@@ -187,7 +191,7 @@ pub mod pallet {
     }
 
     /// A biometric binding links multiple biometric nullifiers to one personhood
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     #[scale_info(skip_type_params(T))]
     pub struct BiometricBinding<T: Config> {
         /// Primary personhood DID (anchor)
@@ -340,7 +344,7 @@ pub mod pallet {
     >;
 
     /// Biometric modality types
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, DecodeWithMemTracking, MaxEncodedLen)]
     pub enum BiometricModality {
         Fingerprint,
         Iris,
@@ -351,7 +355,7 @@ pub mod pallet {
     }
 
     /// Evidence types for progressive recovery
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, DecodeWithMemTracking)]
     pub enum EvidenceType {
         /// Guardian approval with vote strength
         GuardianApproval { vote_strength: u8 },
@@ -532,9 +536,9 @@ pub mod pallet {
             );
 
             // Check DID exists and belongs to caller
-            let identity = pallet_identity_registry::Identities::<T>::get(&did)
+            let identity = pallet_identity_registry::pallet::Identities::<T>::get(&did)
                 .ok_or(Error::<T>::DidNotFound)?;
-            ensure!(identity.controller == who, Error::<T>::NotAuthorized);
+            ensure!(who == identity.controller, Error::<T>::NotAuthorized);
             ensure!(identity.active, Error::<T>::NotAuthorized);
 
             // Check nullifier is unique
@@ -544,7 +548,7 @@ pub mod pallet {
             );
 
             // Check cooldown period
-            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
             let cooldown_end = RegistrationCooldown::<T>::get(&nullifier);
             ensure!(now > cooldown_end, Error::<T>::RegistrationTooSoon);
 
@@ -559,8 +563,8 @@ pub mod pallet {
             let proof = PersonhoodProof {
                 biometric_commitment: commitment,
                 nullifier,
-                uniqueness_proof,
-                registered_at: now,
+                uniqueness_proof: BoundedVec::try_from(uniqueness_proof).map_err(|_| Error::<T>::InvalidProof)?,
+                recovery_proof: BoundedVec::try_from(recovery_proof).map_err(|_| Error::<T>::InvalidProof)?,
                 did,
                 controller: who.clone(),
             };
@@ -633,7 +637,7 @@ pub mod pallet {
             T::Currency::reserve(&who, T::RecoveryDeposit::get())
                 .map_err(|_| Error::<T>::InsufficientDeposit)?;
 
-            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
             let active_at = now.saturating_add(RECOVERY_DELAY_SECONDS);
 
             let guardians_bounded: BoundedVec<T::AccountId, ConstU32<10>> = 
@@ -708,7 +712,7 @@ pub mod pallet {
             ensure!(request.requester == who, Error::<T>::NotAuthorized);
 
             // Check time lock elapsed
-            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
             ensure!(now >= request.active_at, Error::<T>::RecoveryPeriodNotElapsed);
 
             // Check guardian approvals (require 2/3 majority)
@@ -720,7 +724,7 @@ pub mod pallet {
             );
 
             // Get old proof
-            let old_proof = PersonhoodRegistry::<T>::get(&request.old_nullifier)
+            let _old_proof = PersonhoodRegistry::<T>::get(&request.old_nullifier)
                 .ok_or(Error::<T>::PersonhoodProofNotFound)?;
 
             // Remove old nullifier
@@ -792,12 +796,12 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
 
             // Get DID from account
-            let (did, identity) = pallet_identity_registry::Pallet::<T>::get_identity_by_account(&who)
+            let (did, identity) = pallet_identity_registry::pallet::Pallet::<T>::get_identity_by_account(&who)
                 .ok_or(Error::<T>::DidNotFound)?;
 
             ensure!(identity.active, Error::<T>::NotAuthorized);
 
-            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
             LastActivity::<T>::insert(&did, now);
 
             // Auto-cancel recovery if user becomes active
@@ -826,7 +830,7 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
             
             // Verify DID ownership
-            let identity = pallet_identity_registry::Identities::<T>::get(&did)
+            let identity = Identities::<T>::get(&did)
                 .ok_or(Error::<T>::DidNotFound)?;
             ensure!(identity.controller == who, Error::<T>::NotAuthorized);
             
@@ -849,7 +853,7 @@ pub mod pallet {
             // Reserve bond from guardian
             T::Currency::reserve(&guardian, bond_amount)?;
             
-            let now = T::TimeProvider::now().saturated_into::<u64>();
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
             
             let relationship = GuardianRelationship {
                 guardian: guardian.clone(),
@@ -904,7 +908,7 @@ pub mod pallet {
                 );
             }
             
-            let now = T::TimeProvider::now().saturated_into::<u64>();
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
             
             let request = ProgressiveRecoveryRequest {
                 did: old_did,
@@ -947,7 +951,7 @@ pub mod pallet {
                 .ok_or(Error::<T>::ProgressiveRecoveryNotFound)?;
             
             let mut score_increase: u32 = 0;
-            let now = T::TimeProvider::now().saturated_into::<u64>();
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
             
             match evidence_type {
                 EvidenceType::GuardianApproval { vote_strength } => {
@@ -1098,7 +1102,7 @@ pub mod pallet {
             
             ensure!(recovery.requester == who, Error::<T>::NotAuthorized);
             
-            let now = T::TimeProvider::now().saturated_into::<u64>();
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
             
             // Recalculate final score
             let final_score = Self::calculate_recovery_score(&recovery, now);
@@ -1184,7 +1188,7 @@ pub mod pallet {
                 recovery.guardian_votes.retain(|(g, _)| *g != fraudulent_guardian);
                 
                 // Recalculate score
-                let now = T::TimeProvider::now().saturated_into::<u64>();
+                let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
                 recovery.recovery_score = Self::calculate_recovery_score(&recovery, now);
                 
                 ProgressiveRecoveries::<T>::insert(&did, recovery);
@@ -1209,7 +1213,7 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
             
             // Get DID from account
-            let (did, identity) = pallet_identity_registry::Pallet::<T>::get_identity_by_account(&who)
+            let (did, identity) = pallet_identity_registry::pallet::Pallet::<T>::get_identity_by_account(&who)
                 .ok_or(Error::<T>::DidNotFound)?;
             
             ensure!(identity.active, Error::<T>::NotAuthorized);
@@ -1247,9 +1251,9 @@ pub mod pallet {
             );
             
             // Check DID exists and belongs to caller
-            let identity = pallet_identity_registry::Identities::<T>::get(&did)
+            let identity = pallet_identity_registry::pallet::Identities::<T>::get(&did)
                 .ok_or(Error::<T>::DidNotFound)?;
-            ensure!(identity.controller == who, Error::<T>::NotAuthorized);
+            ensure!(who == identity.controller, Error::<T>::NotAuthorized);
             ensure!(identity.active, Error::<T>::NotAuthorized);
             
             // Check if nullifier is already bound to ANY personhood
@@ -1271,7 +1275,7 @@ pub mod pallet {
             T::Currency::reserve(&who, T::RegistrationDeposit::get())
                 .map_err(|_| Error::<T>::InsufficientDeposit)?;
             
-            let now = T::TimeProvider::now().saturated_into::<u64>();
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
             
             // Create biometric binding
             let binding = BiometricBinding {
@@ -1354,7 +1358,7 @@ pub mod pallet {
                 Error::<T>::SessionTokenUsed
             );
             
-            let now = T::TimeProvider::now().saturated_into::<u64>();
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
             
             // Session token valid for 5 minutes
             ensure!(
@@ -1475,7 +1479,11 @@ pub mod pallet {
             // Create ZK proof structure
             let zk_proof = pallet_zk_credentials::ZkProof {
                 proof_type: pallet_zk_credentials::ProofType::Personhood,
-                proof_data: bounded_proof,
+                proof_data: BoundedVec::try_from(bounded_proof.to_vec())
+                    .map_err(|_| Error::<T>::InvalidProof)?
+                    .into_iter()
+                    .pad_using(8192, |_| 0u8)
+                    .collect::<BoundedVec<_, ConstU32<8192>>>(),
                 public_inputs: bounded_inputs,
                 credential_hash: *commitment, // Use commitment as credential hash
                 created_at: <T as Config>::TimeProvider::now().saturated_into::<u64>(),
@@ -1613,8 +1621,12 @@ pub mod pallet {
                         .map_err(|_| Error::<T>::InvalidRecoveryProof)?;
                 
                 let zk_proof = pallet_zk_credentials::ZkProof {
-                    proof_type: pallet_zk_credentials::ProofType::Recovery,
-                    proof_data: bounded_proof,
+                    proof_type: pallet_zk_credentials::ProofType::Personhood,
+                    proof_data: BoundedVec::try_from(bounded_proof.to_vec())
+                        .map_err(|_| Error::<T>::InvalidProof)?
+                        .into_iter()
+                        .pad_using(8192, |_| 0u8)
+                        .collect::<BoundedVec<_, ConstU32<8192>>>(),
                     public_inputs: bounded_inputs,
                     credential_hash: *old_did,
                     created_at: <T as Config>::TimeProvider::now().saturated_into::<u64>(),
@@ -1743,7 +1755,7 @@ pub mod pallet {
             
             // Check if matches any stored pattern
             if stored_patterns.contains(&provided_hash) {
-                Ok(100) // Perfect match
+                return Ok(100); // Perfect match
             } else {
                 // In production, we will use ML model for fuzzy matching
                 // For now: simple hamming distance
@@ -1754,7 +1766,7 @@ pub mod pallet {
                         best_match = similarity;
                     }
                 }
-                Ok(best_match)
+                return Ok(best_match);
             }
 
             /// Check if nullifier is part of ANY personhood
@@ -1775,7 +1787,7 @@ pub mod pallet {
                 );
                 
                 // Convert to ZK proof format
-                let bounded_proof: BoundedVec<u8, ConstU32<4096>> = proof.zk_binding_proof.clone();
+                let bounded_proof: BoundedVec<u8, ConstU32<8192>> = proof.zk_binding_proof.clone();
                 
                 // Public inputs: both nullifiers + session_id
                 let mut public_inputs = Vec::new();
@@ -1803,7 +1815,11 @@ pub mod pallet {
                 // Create ZK proof structure
                 let zk_proof = pallet_zk_credentials::ZkProof {
                     proof_type: pallet_zk_credentials::ProofType::CrossBiometric,
-                    proof_data: bounded_proof,
+                    proof_data: BoundedVec::try_from(bounded_proof.to_vec())
+                        .map_err(|_| Error::<T>::InvalidProof)?
+                        .into_iter()
+                        .pad_using(8192, |_| 0u8)
+                        .collect::<BoundedVec<_, ConstU32<8192>>>(),
                     public_inputs: bounded_inputs,
                     credential_hash: *existing_nullifier,
                     created_at: proof.captured_at,
@@ -1856,7 +1872,7 @@ pub mod pallet {
         
         /// Verify historical access proof
         fn verify_historical_proof(
-            did: &H256,
+            _did: &H256,
             proof_data: &[u8],
         ) -> Result<u8, Error<T>> {
             // Proof format: old_signature || message || timestamp
@@ -1878,28 +1894,28 @@ pub mod pallet {
         
         /// Verify fraud proof
         fn verify_fraud_proof(
-            did: &H256,
-            guardian: &T::AccountId,
+            _did: &H256,
+            _guardian: &T::AccountId,
             proof: &[u8],
         ) -> bool {
             // In production: escalate to governance or oracle network
             // For now: simple check
             !proof.is_empty() && proof.len() >= 32
         }
-    }
 
-    /// Validate nullifier format
-    fn validate_nullifier(nullifier: &H256) -> bool {
-        *nullifier != H256::zero()
-    }
+        /// Validate nullifier format
+        fn validate_nullifier(nullifier: &H256) -> bool {
+            *nullifier != H256::zero()
+        }
 
-    /// Validate commitment format
-    fn validate_commitment(commitment: &H256) -> bool {
-        *commitment != H256::zero()
+        /// Validate commitment format
+        fn validate_commitment(commitment: &H256) -> bool {
+            *commitment != H256::zero()
+        }
     }
 
     /// Check if personhood is registered
-    pub fn is_personhood_registered(did: &H256) -> bool {
+    pub fn is_personhood_registered<T: Config>(did: &H256) -> bool {
         if let Some(nullifier) = DidToNullifier::<T>::get(did) {
             PersonhoodRegistry::<T>::contains_key(&nullifier)
         } else {
@@ -1908,16 +1924,16 @@ pub mod pallet {
     }
 
     /// Check if account is dormant (no activity for 12 months)
-    pub fn is_account_dormant(did: &H256) -> bool {
+    pub fn is_account_dormant<T: Config>(did: &H256) -> bool {
         let last_active = LastActivity::<T>::get(did);
-        let now = <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
+        let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
         let twelve_months = 12 * 30 * 24 * 60 * 60u64;
         
         now.saturating_sub(last_active) > twelve_months
     }
 
     /// Get nullifier for DID
-    pub fn get_nullifier_for_did(did: &H256) -> Result<H256, Error<T>> {
+    pub fn get_nullifier_for_did<T: Config>(did: &H256) -> Result<H256, Error<T>> {
         DidToNullifier::<T>::get(did).ok_or(Error::<T>::DidNotFound)
     }
 }

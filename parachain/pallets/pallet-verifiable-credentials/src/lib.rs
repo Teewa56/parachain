@@ -19,10 +19,10 @@ pub mod pallet {
     use crate::weights::WeightInfo;
     use pallet_identity_registry::pallet::Pallet as IdentityRegistryPallet;
     use pallet_zk_credentials::pallet::Pallet as ZkCredentialsPallet;
-    use pallet_zk_credentials::ProofType as ZkProofType;
     use sp_runtime::traits::SaturatedConversion;
     use sp_std::marker::PhantomData;
-
+    use codec::DecodeWithMemTracking;
+    use frame_support::parameter_types;
     
     #[cfg(feature = "std")]
     use serde::{Deserialize, Serialize};
@@ -32,13 +32,13 @@ pub mod pallet {
 
     #[pallet::config]
     pub trait Config: frame_system::Config + pallet_identity_registry::pallet::Config {
-        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         type TimeProvider: Time;
         type ZkCredentials: pallet_zk_credentials::pallet::Config;
         type WeightInfo: WeightInfo;
         type MaxFieldSize: Get<u32>;
         type MaxFields: Get<u32>;
         type MaxFieldsToReveal: Get<u32>;
+        type MaxCredentialCleanupPerBlock: Get<u32>;
     }
 
     #[pallet::genesis_config]
@@ -59,7 +59,7 @@ pub mod pallet {
     }
 
     /// Credential types
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen, DecodeWithMemTracking)]
     #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
     pub enum CredentialType {
         Education,
@@ -71,7 +71,7 @@ pub mod pallet {
     }
 
     /// Credential status
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen, DecodeWithMemTracking)]
     pub enum CredentialStatus {
         Active,
         Revoked,
@@ -336,7 +336,7 @@ pub mod pallet {
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
         fn on_initialize(_n: BlockNumberFor<T>) -> Weight {
-            let now = <T as pallet::Config>::TimeProvider::now()
+            let now = <T as Config>::TimeProvider::now()
                 .saturated_into::<u64>();
             
             // Limit cleanup to prevent DoS
@@ -344,7 +344,7 @@ pub mod pallet {
             let to_clean = expired_ids.iter()
                 .take(T::MaxCredentialCleanupPerBlock::get() as usize);
             
-            let items_removed = Self::cleanup_credentials(to_clean);
+            let items_removed = Self::cleanup_expired_credentials(to_clean);
             
             T::DbWeight::get().reads_writes(
                 1 + items_removed as u64,
@@ -395,7 +395,7 @@ pub mod pallet {
                 Error::<T>::InvalidCredentialStatus
             );
 
-            let now = <T as pallet::Config>::TimeProvider::now().saturated_into::<u64>();
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
 
             // 5. Convert fields to BoundedVec properly
             let inner_fields_result: Result<Vec<BoundedVec<u8, T::MaxFieldSize>>, Error<T>> = fields
@@ -527,7 +527,7 @@ pub mod pallet {
             let mut credential = Credentials::<T>::get(&credential_id)
                 .ok_or(Error::<T>::CredentialNotFound)?;
 
-            let now = <T as crate::pallet::Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
+            let now = <T as crate::pallet::Config>::TimeProvider::now().saturated_into::<u64>();
             if credential.expires_at > 0 && now.saturating_sub(credential.expires_at) > 0 {
                 credential.status = CredentialStatus::Expired;
                 credential.metadata_hash = Self::generate_metadata_hash(
@@ -677,7 +677,7 @@ pub mod pallet {
                 Error::<T>::TooManyFieldsRequested
             );
 
-            let now = <T as crate::pallet::Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
+            let now = <T as crate::pallet::Config>::TimeProvider::now().saturated_into::<u64>();
 
             let disclosure_id = Self::generate_disclosure_id(
                 &credential_id,
@@ -985,7 +985,7 @@ pub mod pallet {
                     return false;
                 }
 
-                let now = <T as crate::pallet::Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
+                let now = <T as crate::pallet::Config>::TimeProvider::now().saturated_into::<u64>();
                 if credential.expires_at > 0 && now.saturating_sub(credential.expires_at) > 0 {
                     return false;
                 }
@@ -1247,7 +1247,7 @@ pub mod pallet {
     impl<T: Config> Pallet<T> {
         /// Validate that expiration timestamp is reasonable
         fn validate_expiration_timestamp(expires_at: u64) -> bool {
-            let now = <T as crate::pallet::Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
+            let now = <T as crate::pallet::Config>::TimeProvider::now().saturated_into::<u64>();
             
             // Expiration must be in future (if set)
             if expires_at != 0 && expires_at <= now {
@@ -1275,7 +1275,7 @@ pub mod pallet {
             required_fields: Vec<bool>,
             fields_to_reveal: Vec<u32>,
         ) -> H256 {
-            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>();
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
             
             let mut converted_fields: Vec<BoundedVec<u8, T::MaxFieldSize>> = Vec::new();
 

@@ -276,7 +276,7 @@ pub mod pallet {
                 source_para_id: Self::get_current_para_id(),
                 credential_hash,
                 requester: requester_bv,
-                timestamp: <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>(),
+                timestamp: <T as Config>::TimeProvider::now().saturated_into::<u64>(),
             };
 
             // Calculate request hash
@@ -385,7 +385,7 @@ pub mod pallet {
                 credential_hash,
                 is_valid,
                 metadata: metadata_bv,
-                created_at: <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into::<u64>(),
+                created_at: <T as Config>::TimeProvider::now().saturated_into::<u64>(),
             };
 
             // Store response

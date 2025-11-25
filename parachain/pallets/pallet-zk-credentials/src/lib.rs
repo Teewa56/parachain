@@ -42,6 +42,7 @@ pub mod pallet {
         EmploymentStatus,
         Personhood,
         Custom,
+        CrossBiometric,
     }
 
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, Copy, MaxEncodedLen)]

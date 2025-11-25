@@ -15,7 +15,7 @@ pub trait WeightInfo {
     fn challenge_recovery() -> Weight;
     fn record_behavioral_pattern() -> Weight;
     fn register_primary_personhood() -> Weight;
-    fn bind_additional_biometrics() -> Weight;
+    fn bind_additional_biometric() -> Weight;
 }
 
 pub struct SubstrateWeight<T>(core::marker::PhantomData<T>);
@@ -98,7 +98,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
             .saturating_add(T::DbWeight::get().writes(4))
     }
 
-    fn bind_additional_biometrics() -> Weight {
+    fn bind_additional_biometric() -> Weight {
         Weight::from_parts(100_000_000, 0)
             .saturating_add(T::DbWeight::get().reads(3))
             .saturating_add(T::DbWeight::get().writes(2))
@@ -119,5 +119,5 @@ impl WeightInfo for () {
     fn challenge_recovery() -> Weight { Weight::from_parts(110_000_000, 0) }
     fn record_behavioral_pattern() -> Weight { Weight::from_parts(70_000_000, 0) }
     fn register_primary_personhood() -> Weight { Weight::from_parts(140_000_000, 0) }
-    fn bind_additional_biometrics() -> Weight { Weight::from_parts(100_000_000, 0) }
+    fn bind_additional_biometric() -> Weight { Weight::from_parts(100_000_000, 0) }
 }
