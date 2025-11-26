@@ -305,29 +305,11 @@ pub mod pallet {
         InvalidRevealIndex,       // fields_to_reveal contains an index >= fields.len()
     }
 
-    /// Maximum number of credentials per subject (prevents unbounded growth)
-    const MAX_CREDENTIALS_PER_SUBJECT: u32 = 1000;
-
-    /// Maximum number of credentials issued per issuer (prevents spam)
-    const MAX_CREDENTIALS_PER_ISSUER: u32 = 10000;
-
     /// Maximum fields per credential schema
     const MAX_SCHEMA_FIELDS: u32 = 100;
 
     /// Maximum length of individual field name
     const MAX_FIELD_NAME_LENGTH: u32 = 64;
-
-    /// Maximum fields that can be disclosed in a single proof
-    const MAX_FIELDS_TO_DISCLOSE: u32 = 50;
-
-    /// Credential proof freshness requirement (24 hours in seconds)
-    const PROOF_FRESHNESS_SECONDS: u64 = 86400;
-
-    /// Approval threshold for governance votes (66%)
-    const GOVERNANCE_APPROVAL_THRESHOLD: u8 = 66;
-
-    /// Voting period in blocks (7 days)
-    const GOVERNANCE_VOTING_PERIOD_BLOCKS: u32 = 100_800;
 
     parameter_types! {
         pub const MaxCredentialCleanupPerBlock: u32 = 10;
@@ -339,12 +321,7 @@ pub mod pallet {
             let now = <T as Config>::TimeProvider::now()
                 .saturated_into::<u64>();
             
-            // Limit cleanup to prevent DoS
-            let expired_ids = Expiries::<T>::get(now / 6);
-            let to_clean = expired_ids.iter()
-                .take(T::MaxCredentialCleanupPerBlock::get() as usize);
-            
-            let items_removed = Self::cleanup_expired_credentials(to_clean);
+            let items_removed = Self::cleanup_expired_credentials(now);
             
             T::DbWeight::get().reads_writes(
                 1 + items_removed as u64,
@@ -933,12 +910,12 @@ pub mod pallet {
                 return false;
             }
 
-            if fields.len() > 100 {
+            if fields.len() > MAX_SCHEMA_FIELDS as usize {
                 return false;
             }
 
             for field_name in fields {
-                if field_name.is_empty() || field_name.len() > 64 {
+                if field_name.is_empty() || field_name.len() > MAX_FIELD_NAME_LENGTH as usize {
                     return false;
                 }
             }

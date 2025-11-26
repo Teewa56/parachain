@@ -26,6 +26,7 @@ sp-state-machine = { version = "0.28.0", default-features = false }
 trie-db = { version = "0.30.0", default-features = false }
 hash-db = { version = "0.16.0", default-features = false }
 memory-db = { version = "0.34.0", default-features = false }
+itertools = { version = "0.14.0", default-features = false }
 pallet-identity-registry = { workspace = true, default-features = false }
 pallet-zk-credentials = { workspace = true, default-features = false }
 
@@ -50,6 +51,7 @@ std = [
     "sp-state-machine/std",
     "trie-db/std",
     "hash-db/std",
+    "itertools/std",
     "memory-db/std",
 ]
 runtime-benchmarks = ["frame-support/runtime-benchmarks"]

@@ -480,6 +480,12 @@ STEP 3: Finalize Recovery (After 6 Months)
 - DID ownership transferred to new nullifier
 ```
 
+## Proof-of-Personhood Pallet
+
+The Proof-of-Personhood pallet establishes on-chain human uniqueness verification using biometric nullifiers and zero-knowledge proofs, ensuring one person cannot register multiple identities while preserving complete privacy of biometric data. Users register by submitting a cryptographic nullifier derived from their biometric (fingerprint, iris, face geometry, etc.) along with a commitment and ZK proof, where the nullifier acts as a unique fingerprint that prevents duplicate registrations without revealing the actual biometric. The system supports multi-biometric binding through cross-biometric proofs, allowing users to link multiple biometric modalities (e.g., iris + fingerprint) to a single personhood, proving all biometrics belong to the same person without exposing the raw data.
+
+Identity recovery employs a progressive, multi-layered approach that combines social recovery guardians, behavioral biometrics (typing patterns, gait analysis), historical access proofs, and economic stakes to enable account recovery even in catastrophic data loss scenarios. Guardian relationships are weighted by trust level and bonded stakes, with fraudulent guardians subject to slashing. The recovery score system (0-100+) aggregates evidence from multiple sources and dynamically reduces the 6-month base recovery delay based on confidence signals—high-confidence behavioral biometrics can reduce delays by 60 days, strong guardian consensus by variable amounts based on relationship strength, and substantial economic stakes by 90 days, with a minimum 7-day safety period. This design resists Sybil attacks through deposit requirements, cooldown periods, and cryptographic verification, while the cross-chain existence proof mechanism (via Merkle proofs of state trie membership) enables other parachains to verify personhood registrations without full state queries, supporting decentralized identity verification across the Polkadot ecosystem.
+
 ---
 
 ## Technical Flow
@@ -682,7 +688,75 @@ PARACHAIN A:
 ## Project Folder Structure
 
 ```
-identity-parachain/
+portableID/
+│
+├──ml-behavioral-biometrics/
+├── README.md
+├── requirements.txt
+├── setup.py
+├── .env.example
+├── .gitignore
+│
+├── app/
+│   ├── __init__.py
+│   ├── main.py                 # FastAPI application entry
+│   ├── config.py               # Configuration management
+│   ├── models.py               # Pydantic request/response models
+│   └── routes/
+│       ├── __init__.py
+│       ├── inference.py        # /predict endpoint
+│       └── health.py           # /health endpoint
+│
+├── ml/
+│   ├── __init__.py
+│   ├── model.py                # PyTorch model architecture
+│   ├── train.py                # Training pipeline
+│   ├── inference.py            # Inference wrapper
+│   ├── preprocessing.py        # Feature engineering
+│   └── utils.py                # Helper functions
+│
+├── data/
+│   ├── raw/                    # Raw training data
+│   │   └── .gitkeep
+│   ├── processed/              # Preprocessed features
+│   │   └── .gitkeep
+│   └── README.md               # Data documentation
+│
+├── models/
+│   ├── checkpoints/            # Training checkpoints
+│   │   └── .gitkeep
+│   ├── production/             # Production model
+│   │   ├── model.pth
+│   │   └── scaler.pkl
+│   └── experiments/            # Experimental models
+│       └── .gitkeep
+│
+├── scripts/
+│   ├── train_model.py          # Training script
+│   ├── evaluate_model.py       # Evaluation script
+│   ├── export_model.py         # ONNX export
+│   └── generate_synthetic.py  # Synthetic data generator
+│
+├── tests/
+│   ├── __init__.py
+│   ├── test_api.py             # API tests
+│   ├── test_model.py           # Model tests
+│   └── test_preprocessing.py  # Preprocessing tests
+│
+├── notebooks/
+│   ├── 01_data_exploration.ipynb
+│   ├── 02_feature_engineering.ipynb
+│   └── 03_model_evaluation.ipynb
+│
+├── docker/
+│   ├── Dockerfile
+│   ├── docker-compose.yml
+│   └── .dockerignore
+│
+└── docs/
+│   ├── API.md                  # API documentation
+│   ├── MODEL.md                # Model architecture docs
+│   └── DEPLOYMENT.md           # Deployment guide
 │
 ├── parachain/                    # Polkadot Parachain (Rust/FRAME)
 │   ├── Cargo.toml

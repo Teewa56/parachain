@@ -309,7 +309,7 @@ pub mod pallet {
         }
 
         /// Internal verification logic
-        fn verify_proof_internal(proof: &ZkProof) -> Result<(), Error<T>> {
+        pub fn verify_proof_internal(proof: &ZkProof) -> Result<(), Error<T>> {
             let vk_data = VerifyingKeys::<T>::get(&proof.proof_type)
                 .ok_or(Error::<T>::VerificationKeyNotFound)?;
             
@@ -357,12 +357,6 @@ pub mod pallet {
                 ZkCredentialType::AgeVerification => ProofType::AgeAbove,
                 ZkCredentialType::Custom => ProofType::Custom,
             }
-        }
-
-        /// Public interface for other pallets
-        pub fn verify_proof_internal_public(proof: &ZkProof) -> Result<bool, DispatchError> {
-            Self::verify_proof_internal(proof)?;
-            Ok(true)
         }
 
         /// Get verification key for a proof type

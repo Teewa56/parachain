@@ -20,13 +20,13 @@ pub mod pallet {
     use frame_system::pallet_prelude::*;
     use sp_std::vec::Vec;
     use sp_core::H256;
-    use sp_runtime::traits::StaticLookup;
     use pallet_identity_registry;
     use crate::weights::WeightInfo;
     use frame_support::BoundedVec;
     use pallet_zk_credentials;
-    use sp_trie::{generate_trie_proof, verify_trie_proof, LayoutV1, TrieDBBuilder};
     use codec::DecodeWithMemTracking;
+    use itertools::Itertools;
+    use sp_io::crypto::sr25519_verify;
 
     type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
@@ -44,6 +44,12 @@ pub mod pallet {
 
     /// Required recovery score to finalize (0-100+)
     const REQUIRED_RECOVERY_SCORE: u32 = 100;
+
+    /// Maximum age for fraud proofs (7 days)
+    const MAX_FRAUD_PROOF_AGE: u64 = 7 * 24 * 60 * 60;
+
+    /// Suspicious guardian approval threshold
+    const MAX_GUARDIAN_APPROVALS: usize = 5;
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
@@ -162,6 +168,87 @@ pub mod pallet {
         pub deposit: BalanceOf<T>,
         /// Requester account
         pub requester: T::AccountId,
+    }
+
+    /// Historical signature entry for proof verification
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+    pub struct HistoricalSignature {
+        pub timestamp: u64,
+        pub signature: [u8; 64],
+        pub public_key: [u8; 32],
+        pub message_hash: H256,
+    }
+
+    /// Behavioral pattern features
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+    pub struct BehavioralFeatures {
+        pub typing_speed_wpm: u32,        // Words per minute
+        pub avg_key_hold_time_ms: u32,    // Average key hold time
+        pub avg_transition_time_ms: u32,  // Time between key presses
+        pub error_rate_percent: u8,       // Typing error rate
+        pub common_patterns_hash: H256,   // Hash of common word sequences
+        pub activity_hour_preference: u8,  // Preferred hour of day (0-23)
+    }
+
+    /// Statistical envelope for pattern matching (2-sigma bounds)
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    pub struct BehavioralEnvelope {
+        // Mean values
+        pub mean_typing_speed: u32,
+        pub mean_key_hold_time: u32,
+        pub mean_transition_time: u32,
+        pub mean_error_rate: u8,
+        
+        // Standard deviations (fixed-point: value * 100)
+        pub std_dev_typing_speed: u32,
+        pub std_dev_key_hold_time: u32,
+        pub std_dev_transition_time: u32,
+        pub std_dev_error_rate: u16,
+        
+        // 2-sigma thresholds (95% confidence bounds)
+        pub min_typing_speed: u32,
+        pub max_typing_speed: u32,
+        pub min_key_hold_time: u32,
+        pub max_key_hold_time: u32,
+        pub min_transition_time: u32,
+        pub max_transition_time: u32,
+        
+        pub samples_count: u32,
+        pub last_updated: u64,
+    }
+
+    /// Feature weights based on research (total = 100)
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    pub struct FeatureWeights {
+        pub typing_speed: u8,        // 15 - moderate discriminability
+        pub key_hold_time: u8,        // 20 - good consistency
+        pub transition_time: u8,      // 30 - most distinctive (unconscious)
+        pub error_rate: u8,           // 10 - most variable
+        pub pattern_hash: u8,         // 15 - common sequences
+        pub time_preference: u8,      // 10 - activity patterns
+    }
+
+    impl Default for FeatureWeights {
+        fn default() -> Self {
+            Self {
+                typing_speed: 15,
+                key_hold_time: 20,
+                transition_time: 30,
+                error_rate: 10,
+                pattern_hash: 15,
+                time_preference: 10,
+            }
+        }
+    }
+
+    /// Full behavioral pattern with all features (not just hash)
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    pub struct StoredBehavioralPattern {
+        /// Actual feature values for direct comparison
+        pub features: BehavioralFeatures,
+        pub recorded_at: u64,
+        pub sample_count: u32,
+        pub confidence_score: u8,  // 0-100, increases with more samples
     }
 
     /// Storage: Personhood registry by nullifier
@@ -343,6 +430,48 @@ pub mod pallet {
         OptionQuery,
     >;
 
+    /// Store historical public keys for signature verification
+    #[pallet::storage]
+    #[pallet::getter(fn historical_keys)]
+    pub type HistoricalKeys<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        H256, // DID
+        BoundedVec<([u8; 32], u64), ConstU32<20>>, // (public_key, registered_at)
+        ValueQuery,
+    >;
+
+    /// Storage: DID -> Statistical Envelope
+    #[pallet::storage]
+    #[pallet::getter(fn behavioral_envelopes)]
+    pub type BehavioralEnvelopes<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        H256, // DID
+        BehavioralEnvelope,
+        OptionQuery,
+    >;
+
+    /// Storage: DID -> Vec<Full Patterns> (last 10 samples)
+    #[pallet::storage]
+    #[pallet::getter(fn behavioral_pattern_samples)]
+    pub type BehavioralPatternSamples<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        H256, // DID
+        BoundedVec<StoredBehavioralPattern, ConstU32<10>>,
+        ValueQuery,
+    >;
+
+    /// Drift analysis result
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+    pub enum DriftAnalysis {
+        InsufficientData,
+        NormalVariation { distance: u32 },
+        GradualDrift { distance: u32, accept_update: bool },
+        SuddenChange { distance: u32, confidence: u8 },
+    }
+
     /// Biometric modality types
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, DecodeWithMemTracking, MaxEncodedLen)]
     pub enum BiometricModality {
@@ -435,80 +564,70 @@ pub mod pallet {
         },
         
         /// Attempted double registration detected [nullifier, existing_did]
-        DoubleRegistrationAttempt {
-            nullifier: H256,
-            existing_did: H256,
+        DoubleRegistrationAttempt { nullifier: H256, existing_did: H256 },
+        HistoricalKeyRegistered { did: H256, key_hash: H256 },
+        BehavioralPatternRecorded { did: H256, pattern_hash: H256, sample_count: u32 },
+        /// Anomalous behavioral pattern detected (potential takeover)
+        AnomalousPatternDetected {
+            did: H256,
+            distance: u32,
+            confidence: u8,
+        },
+        
+        /// Behavioral envelope updated with new sample
+        EnvelopeUpdated {
+            did: H256,
+            samples_count: u32,
+        },
+        
+        /// Pattern rejected (outside 2-sigma envelope)
+        PatternRejected {
+            did: H256,
+            violations: Vec<u8>,
         },
     }
 
     #[pallet::error]
     pub enum Error<T> {
-        /// Nullifier already used (duplicate registration)
+        InvalidProof,
         NullifierAlreadyUsed,
-        /// DID not found
         DidNotFound,
-        /// Not authorized
         NotAuthorized,
-        /// Recovery request not found
         RecoveryRequestNotFound,
-        /// Recovery period not elapsed
         RecoveryPeriodNotElapsed,
-        /// Not a guardian
         NotAGuardian,
-        /// Insufficient guardian approvals
         InsufficientGuardianApprovals,
-        /// Personhood proof not found
         PersonhoodProofNotFound,
-        /// Invalid recovery proof
         InvalidRecoveryProof,
-        /// Invalid uniqueness proof
         InvalidUniquenessProof,
-        /// Registration too soon (cooldown active)
         RegistrationTooSoon,
-        /// Insufficient deposit
         InsufficientDeposit,
-        /// Recovery already active
         RecoveryAlreadyActive,
-        /// Invalid nullifier format
         InvalidNullifier,
-        /// Invalid commitment format
         InvalidCommitment,
-        /// Guardian relationship already exists
         GuardianAlreadyExists,
-        /// Invalid relationship strength (must be 1-10)
         InvalidRelationshipStrength,
-        /// Insufficient guardian bond
         InsufficientGuardianBond,
-        /// Guardian not found
         GuardianNotFound,
-        /// Exceeded voting power
         ExceededVotingPower,
-        /// Progressive recovery not found
         ProgressiveRecoveryNotFound,
-        /// Recovery score insufficient
         RecoveryScoreInsufficient,
-        /// Invalid behavioral proof
         InvalidBehavioralProof,
-        /// Invalid historical proof
         InvalidHistoricalProof,
-        /// Recovery already in progress
         RecoveryInProgress,
-        /// Nullifier already bound to different personhood
         NullifierAlreadyBound,
-        /// Invalid cross-biometric proof
         InvalidCrossBiometricProof,
-        /// Session token already used
         SessionTokenUsed,
-        /// Session token expired
         SessionTokenExpired,
-        /// Biometric modality already registered
         ModalityAlreadyRegistered,
-        /// Invalid biometric modality
         InvalidBiometricModality,
-        /// Binding not found
         BindingNotFound,
-        /// Maximum bound biometrics reached
         MaxBiometricsReached,
+        InvalidSignature,
+        InvalidPublicKey,
+        SignatureTooOld,
+        InvalidFeatureData,
+        PatternMismatch,
     }
 
     #[pallet::call]
@@ -563,8 +682,8 @@ pub mod pallet {
             let proof = PersonhoodProof {
                 biometric_commitment: commitment,
                 nullifier,
-                uniqueness_proof: BoundedVec::try_from(uniqueness_proof).map_err(|_| Error::<T>::InvalidProof)?,
-                recovery_proof: BoundedVec::try_from(recovery_proof).map_err(|_| Error::<T>::InvalidProof)?,
+                uniqueness_proof: uniqueness_proof.try_into().map_err(|_| Error::<T>::InvalidUniquenessProof)?,
+                registered_at: now,
                 did,
                 controller: who.clone(),
             };
@@ -648,7 +767,7 @@ pub mod pallet {
                 old_nullifier,
                 new_nullifier,
                 new_commitment,
-                recovery_proof,
+                recovery_proof: recovery_proof.try_into().map_err(|_| Error::<T>::InvalidRecoveryProof)?,
                 guardians: guardians_bounded,
                 requested_at: now,
                 active_at,
@@ -1162,32 +1281,29 @@ pub mod pallet {
         ) -> DispatchResult {
             let challenger = ensure_signed(origin)?;
             
-            // Verify fraud proof (simplified - in production, we will use governance)
             ensure!(
                 Self::verify_fraud_proof(&did, &fraudulent_guardian, &fraud_proof),
                 Error::<T>::InvalidRecoveryProof
             );
             
-            // Get guardian relationship
             let relationship = GuardianRelationships::<T>::get(&did, &fraudulent_guardian)
                 .ok_or(Error::<T>::GuardianNotFound)?;
             
             // Slash guardian's bond
             let slashed = T::Currency::slash_reserved(&fraudulent_guardian, relationship.bonded_stake);
+            let slashed_balance = slashed.0;
             
-            // Reward challenger with 50% of slashed amount
-            let reward = slashed.0.saturating_div(2u32.into());
+            // Calculate reward (50% of slashed amount)
+            let divisor: BalanceOf<T> = 2u32.into();
+            let reward = slashed_balance / divisor;
+            
             T::Currency::deposit_creating(&challenger, reward);
             
-            // Remove guardian
             GuardianRelationships::<T>::remove(&did, &fraudulent_guardian);
             
-            // Cancel recovery if active
             if let Some(mut recovery) = ProgressiveRecoveries::<T>::get(&did) {
-                // Remove fraudulent guardian's votes
                 recovery.guardian_votes.retain(|(g, _)| *g != fraudulent_guardian);
                 
-                // Recalculate score
                 let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
                 recovery.recovery_score = Self::calculate_recovery_score(&recovery, now);
                 
@@ -1197,13 +1313,14 @@ pub mod pallet {
             Self::deposit_event(Event::GuardianSlashed {
                 did,
                 guardian: fraudulent_guardian,
-                amount: slashed.0,
+                amount: slashed_balance,
             });
             
             Ok(())
         }
         
         /// Record behavioral pattern for future verification
+        /// Pattern data should be encoded BehavioralFeatures struct
         #[pallet::call_index(11)]
         #[pallet::weight(<T as Config>::WeightInfo::record_behavioral_pattern())]
         pub fn record_behavioral_pattern(
@@ -1212,21 +1329,21 @@ pub mod pallet {
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             
-            // Get DID from account
             let (did, identity) = pallet_identity_registry::pallet::Pallet::<T>::get_identity_by_account(&who)
                 .ok_or(Error::<T>::DidNotFound)?;
             
             ensure!(identity.active, Error::<T>::NotAuthorized);
             
-            // Hash pattern data
-            let pattern_hash = sp_io::hashing::blake2_256(&pattern_data).into();
+            // Decode behavioral features
+            let features = BehavioralFeatures::decode(&mut &pattern_data[..])
+                .map_err(|_| Error::<T>::InvalidFeatureData)?;
             
-            // Store pattern hash
-            BehavioralPatterns::<T>::mutate(&did, |patterns| {
-                if !patterns.contains(&pattern_hash) {
-                    let _ = patterns.try_push(pattern_hash);
-                }
-            });
+            // Validate features
+            ensure!(features.typing_speed_wpm > 0, Error::<T>::InvalidFeatureData);
+            ensure!(features.error_rate_percent <= 100, Error::<T>::InvalidFeatureData);
+            ensure!(features.activity_hour_preference < 24, Error::<T>::InvalidFeatureData);
+            
+            Self::record_behavioral_pattern_internal(&did, &features)?;
             
             Ok(())
         }
@@ -1395,25 +1512,514 @@ pub mod pallet {
             
             Ok(())
         }
+
+        /// Register a historical public key for future signature verification
+        #[pallet::call_index(14)]
+        #[pallet::weight(<T as Config>::WeightInfo::register_historical_key())]
+        pub fn register_historical_key(
+            origin: OriginFor<T>,
+            public_key: [u8; 32],
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            
+            // Get DID from account
+            let (did, identity) = pallet_identity_registry::pallet::Pallet::<T>::get_identity_by_account(&who)
+                .ok_or(Error::<T>::DidNotFound)?;
+            
+            ensure!(identity.active, Error::<T>::NotAuthorized);
+            
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
+            
+            HistoricalKeys::<T>::try_mutate(&did, |keys| -> DispatchResult {
+                keys.try_push((public_key, now))
+                    .map_err(|_| Error::<T>::InvalidPublicKey)?;
+                Ok(())
+            })?;
+            
+            let key_hash: H256 = sp_io::hashing::blake2_256(&public_key).into();
+            Self::deposit_event(Event::HistoricalKeyRegistered {
+                did,
+                key_hash,
+            });
+            
+            Ok(())
+        }
     }
 
     impl<T: Config> Pallet<T> {
+        /// Update behavioral envelope with new sample (Welford's online algorithm)
+        pub fn update_behavioral_envelope(
+            did: &H256,
+            new_features: &BehavioralFeatures,
+        ) -> Result<(), Error<T>> {
+            BehavioralEnvelopes::<T>::try_mutate(did, |envelope_opt| -> Result<(), Error<T>> {
+                let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
+                
+                match envelope_opt {
+                    None => {
+                        // First sample - initialize envelope with conservative bounds
+                        *envelope_opt = Some(BehavioralEnvelope {
+                            mean_typing_speed: new_features.typing_speed_wpm,
+                            mean_key_hold_time: new_features.avg_key_hold_time_ms,
+                            mean_transition_time: new_features.avg_transition_time_ms,
+                            mean_error_rate: new_features.error_rate_percent,
+                            std_dev_typing_speed: 1000, // Conservative initial std dev (10 WPM * 100)
+                            std_dev_key_hold_time: 2000, // 20ms * 100
+                            std_dev_transition_time: 1500, // 15ms * 100
+                            std_dev_error_rate: 300, // 3% * 100
+                            min_typing_speed: new_features.typing_speed_wpm.saturating_sub(10),
+                            max_typing_speed: new_features.typing_speed_wpm.saturating_add(10),
+                            min_key_hold_time: new_features.avg_key_hold_time_ms.saturating_sub(20),
+                            max_key_hold_time: new_features.avg_key_hold_time_ms.saturating_add(20),
+                            min_transition_time: new_features.avg_transition_time_ms.saturating_sub(15),
+                            max_transition_time: new_features.avg_transition_time_ms.saturating_add(15),
+                            samples_count: 1,
+                            last_updated: now,
+                        });
+                    },
+                    Some(envelope) => {
+                        let n = envelope.samples_count;
+                        let n_plus_1 = n + 1;
+                        
+                        // Update typing speed mean and variance (Welford's algorithm)
+                        let old_mean_typing = envelope.mean_typing_speed;
+                        envelope.mean_typing_speed = 
+                            ((old_mean_typing as u64 * n as u64 + new_features.typing_speed_wpm as u64) 
+                            / n_plus_1 as u64) as u32;
+                        
+                        // Update variance incrementally
+                        if n > 1 {
+                            let delta = new_features.typing_speed_wpm as i64 - old_mean_typing as i64;
+                            let delta2 = new_features.typing_speed_wpm as i64 - envelope.mean_typing_speed as i64;
+                            
+                            // M2 = M2 + delta * delta2
+                            // variance = M2 / (n - 1)
+                            // std_dev = sqrt(variance)
+                            // For fixed-point: store std_dev * 100
+                            
+                            // Simplified: recalculate from samples
+                            envelope.std_dev_typing_speed = Self::calculate_std_dev_from_samples(
+                                did, 
+                                envelope.mean_typing_speed,
+                                0 // feature index for typing speed
+                            )?;
+                        }
+                        
+                        // Similar updates for other features
+                        envelope.mean_key_hold_time = 
+                            ((envelope.mean_key_hold_time as u64 * n as u64 + new_features.avg_key_hold_time_ms as u64) 
+                            / n_plus_1 as u64) as u32;
+                        
+                        envelope.mean_transition_time = 
+                            ((envelope.mean_transition_time as u64 * n as u64 + new_features.avg_transition_time_ms as u64) 
+                            / n_plus_1 as u64) as u32;
+                        
+                        envelope.mean_error_rate = 
+                            ((envelope.mean_error_rate as u32 * n + new_features.error_rate_percent as u32) 
+                            / n_plus_1) as u8;
+                        
+                        // Update 2-sigma bounds
+                        let std_typing = envelope.std_dev_typing_speed / 100; // Convert from fixed-point
+                        envelope.min_typing_speed = envelope.mean_typing_speed.saturating_sub(2 * std_typing);
+                        envelope.max_typing_speed = envelope.mean_typing_speed.saturating_add(2 * std_typing);
+                        
+                        let std_hold = envelope.std_dev_key_hold_time / 100;
+                        envelope.min_key_hold_time = envelope.mean_key_hold_time.saturating_sub(2 * std_hold);
+                        envelope.max_key_hold_time = envelope.mean_key_hold_time.saturating_add(2 * std_hold);
+                        
+                        let std_transition = envelope.std_dev_transition_time / 100;
+                        envelope.min_transition_time = envelope.mean_transition_time.saturating_sub(2 * std_transition);
+                        envelope.max_transition_time = envelope.mean_transition_time.saturating_add(2 * std_transition);
+                        
+                        envelope.samples_count = n_plus_1;
+                        envelope.last_updated = now;
+                    }
+                }
+                
+                Self::deposit_event(Event::EnvelopeUpdated {
+                    did: *did,
+                    samples_count: envelope_opt.as_ref().unwrap().samples_count,
+                });
+                
+                Ok(())
+            })
+        }
+        
+        /// Calculate standard deviation from stored samples
+        fn calculate_std_dev_from_samples(
+            did: &H256,
+            mean: u32,
+            feature_index: u8,
+        ) -> Result<u32, Error<T>> {
+            let samples = BehavioralPatternSamples::<T>::get(did);
+            if samples.len() < 2 {
+                return Ok(1000); // Conservative default
+            }
+            
+            let mut sum_squared_diff = 0u64;
+            
+            for sample in samples.iter() {
+                let value = match feature_index {
+                    0 => sample.features.typing_speed_wpm,
+                    1 => sample.features.avg_key_hold_time_ms,
+                    2 => sample.features.avg_transition_time_ms,
+                    _ => return Ok(1000),
+                };
+                
+                let diff = if value > mean {
+                    value - mean
+                } else {
+                    mean - value
+                };
+                
+                sum_squared_diff += (diff as u64).pow(2);
+            }
+            
+            let variance = sum_squared_diff / (samples.len() as u64 - 1);
+            let std_dev = Self::integer_sqrt_u64(variance) as u32;
+            
+            // Return fixed-point (std_dev * 100)
+            Ok(std_dev * 100)
+        }
+        
+        /// 64-bit integer square root
+        fn integer_sqrt_u64(n: u64) -> u64 {
+            if n < 2 {
+                return n;
+            }
+            let mut x = n;
+            let mut y = (x + 1) / 2;
+            while y < x {
+                x = y;
+                y = (x + n / x) / 2;
+            }
+            x
+        }
+        
+        /// Detect gradual drift vs sudden takeover
+        pub fn detect_pattern_drift(
+            did: &H256,
+            new_features: &BehavioralFeatures,
+            historical_samples: &[StoredBehavioralPattern],
+        ) -> DriftAnalysis {
+            if historical_samples.len() < 3 {
+                return DriftAnalysis::InsufficientData;
+            }
+            
+            // Calculate trend over last 5 samples
+            let recent_samples = if historical_samples.len() > 5 {
+                &historical_samples[historical_samples.len() - 5..]
+            } else {
+                historical_samples
+            };
+            
+            let distance_from_mean = Self::calculate_distance_from_mean(new_features, historical_samples);
+            let follows_trend = Self::is_consistent_with_trend(recent_samples, new_features);
+            
+            if distance_from_mean > 200 && !follows_trend {
+                // Sudden large deviation = potential takeover
+                DriftAnalysis::SuddenChange { 
+                    distance: distance_from_mean,
+                    confidence: 95,
+                }
+            } else if distance_from_mean > 100 && follows_trend {
+                // Gradual change = natural evolution
+                DriftAnalysis::GradualDrift {
+                    distance: distance_from_mean,
+                    accept_update: true,
+                }
+            } else {
+                // Normal variation
+                DriftAnalysis::NormalVariation {
+                    distance: distance_from_mean,
+                }
+            }
+        }
+        
+        /// Calculate distance from mean of historical samples
+        fn calculate_distance_from_mean(
+            features: &BehavioralFeatures,
+            samples: &[StoredBehavioralPattern],
+        ) -> u32 {
+            if samples.is_empty() {
+                return 0;
+            }
+            
+            // Calculate means
+            let mut sum_typing = 0u64;
+            let mut sum_hold = 0u64;
+            let mut sum_transition = 0u64;
+            
+            for sample in samples.iter() {
+                sum_typing += sample.features.typing_speed_wpm as u64;
+                sum_hold += sample.features.avg_key_hold_time_ms as u64;
+                sum_transition += sample.features.avg_transition_time_ms as u64;
+            }
+            
+            let mean_typing = (sum_typing / samples.len() as u64) as u32;
+            let mean_hold = (sum_hold / samples.len() as u64) as u32;
+            let mean_transition = (sum_transition / samples.len() as u64) as u32;
+            
+            // Calculate Euclidean distance
+            let typing_diff = Self::absolute_diff(features.typing_speed_wpm, mean_typing);
+            let hold_diff = Self::absolute_diff(features.avg_key_hold_time_ms, mean_hold);
+            let transition_diff = Self::absolute_diff(features.avg_transition_time_ms, mean_transition);
+            
+            let distance_sq = 
+                typing_diff.pow(2) + 
+                hold_diff.pow(2) + 
+                transition_diff.pow(2);
+            
+            Self::integer_sqrt(distance_sq)
+        }
+        
+        /// Check if new features follow recent trend
+        fn is_consistent_with_trend(
+            recent_samples: &[StoredBehavioralPattern],
+            new_features: &BehavioralFeatures,
+        ) -> bool {
+            if recent_samples.len() < 2 {
+                return true; // Not enough data
+            }
+            
+            // Calculate linear trend for typing speed
+            let oldest = &recent_samples[0].features;
+            let newest = &recent_samples[recent_samples.len() - 1].features;
+            
+            let typing_trend = newest.typing_speed_wpm as i64 - oldest.typing_speed_wpm as i64;
+            let predicted_typing = newest.typing_speed_wpm as i64 + typing_trend / 2;
+            
+            let actual_diff = (new_features.typing_speed_wpm as i64 - predicted_typing).abs();
+            
+            // Allow 20% deviation from trend
+            actual_diff < (predicted_typing.abs() / 5)
+        }
+
+        /// Calculate weighted distance between two behavioral feature sets
+        pub fn calculate_weighted_distance(
+            current: &BehavioralFeatures,
+            stored: &BehavioralFeatures,
+            weights: &FeatureWeights,
+        ) -> u32 {
+            let w = weights;
+            
+            // Normalize features to 0-100 scale
+            let typing_diff = Self::normalize_typing_speed_diff(
+                current.typing_speed_wpm, 
+                stored.typing_speed_wpm
+            );
+            let hold_diff = Self::normalize_time_diff(
+                current.avg_key_hold_time_ms, 
+                stored.avg_key_hold_time_ms, 
+                200
+            );
+            let transition_diff = Self::normalize_time_diff(
+                current.avg_transition_time_ms, 
+                stored.avg_transition_time_ms, 
+                150
+            );
+            let error_diff = Self::absolute_diff(
+                current.error_rate_percent, 
+                stored.error_rate_percent
+            ) as u32;
+            let pattern_diff = Self::calculate_hash_similarity(
+                &current.common_patterns_hash, 
+                &stored.common_patterns_hash
+            ) as u32;
+            let time_diff = Self::absolute_diff(
+                current.activity_hour_preference, 
+                stored.activity_hour_preference
+            ) as u32;
+            
+            // Weighted sum of squared differences
+            let distance_squared = 
+                (typing_diff * typing_diff * w.typing_speed as u32) +
+                (hold_diff * hold_diff * w.key_hold_time as u32) +
+                (transition_diff * transition_diff * w.transition_time as u32) +
+                (error_diff * error_diff * w.error_rate as u32) +
+                (pattern_diff * pattern_diff * w.pattern_hash as u32) +
+                (time_diff * time_diff * w.time_preference as u32);
+            
+            // Return square root (fixed-point integer sqrt)
+            Self::integer_sqrt(distance_squared)
+        }
+        
+        /// Normalize typing speed difference to 0-100 scale
+        /// ±10 WPM = 90% similarity (distance of 10)
+        fn normalize_typing_speed_diff(current: u32, stored: u32) -> u32 {
+            let diff = Self::absolute_diff(current, stored);
+            (diff * 10).min(100)  // 10 WPM = 100 distance points
+        }
+        
+        /// Normalize time differences (ms)
+        fn normalize_time_diff(current: u32, stored: u32, max_expected: u32) -> u32 {
+            let diff = Self::absolute_diff(current, stored);
+            ((diff * 100) / max_expected).min(100)
+        }
+        
+        /// Calculate absolute difference (safe subtraction)
+        fn absolute_diff(a: u32, b: u32) -> u32 {
+            if a > b {
+                a.saturating_sub(b)
+            } else {
+                b.saturating_sub(a)
+            }
+        }
+        
+        /// Integer square root using Newton's method
+        fn integer_sqrt(n: u32) -> u32 {
+            if n < 2 {
+                return n;
+            }
+            let mut x = n;
+            let mut y = (x + 1) / 2;
+            while y < x {
+                x = y;
+                y = (x + n / x) / 2;
+            }
+            x
+        }
+
+        /// Calculate match confidence (0-100)
+        pub fn calculate_match_confidence(
+            distance: u32,
+            envelope: &BehavioralEnvelope,
+            samples_available: u32,
+        ) -> u8 {
+            // Convert distance to similarity (inverse relationship)
+            // Distance of 0 = 100% similarity, distance of 100 = 0% similarity
+            let base_similarity = if distance >= 100 {
+                0
+            } else {
+                100 - distance
+            };
+            
+            // Confidence boost based on number of samples
+            let sample_confidence = match samples_available {
+                0..=1 => 50,   // Low confidence with 1 sample
+                2..=3 => 70,   // Medium confidence
+                4..=5 => 85,   // Good confidence
+                6..=10 => 95,  // High confidence
+                _ => 100,      // Maximum confidence
+            };
+            
+            // Combined confidence: weighted average (70% similarity, 30% samples)
+            let confidence = ((base_similarity as u32 * 70) + (sample_confidence as u32 * 30)) / 100;
+            
+            confidence.min(100) as u8
+        }
+        
+        /// Check if pattern falls within 2-sigma envelope
+        pub fn is_within_envelope(
+            features: &BehavioralFeatures,
+            envelope: &BehavioralEnvelope,
+        ) -> (bool, Vec<u8>) {
+            let mut violations = Vec::new();
+            
+            // Check typing speed
+            if features.typing_speed_wpm < envelope.min_typing_speed 
+                || features.typing_speed_wpm > envelope.max_typing_speed {
+                violations.push(0); // Feature index 0
+            }
+            
+            // Check key hold time
+            if features.avg_key_hold_time_ms < envelope.min_key_hold_time 
+                || features.avg_key_hold_time_ms > envelope.max_key_hold_time {
+                violations.push(1); // Feature index 1
+            }
+            
+            // Check transition time
+            if features.avg_transition_time_ms < envelope.min_transition_time 
+                || features.avg_transition_time_ms > envelope.max_transition_time {
+                violations.push(2); // Feature index 2
+            }
+            
+            let is_within = violations.is_empty();
+            (is_within, violations)
+        }
+
+        /// Check if nullifier is part of any personhood
+        pub fn get_personhood_for_nullifier(nullifier: &H256) -> Option<H256> {
+            BiometricBindings::<T>::get(nullifier)
+        }
+        
+        /// Verify cross-biometric ZK proof
+        fn verify_cross_biometric_proof(
+            existing_nullifier: &H256,
+            new_nullifier: &H256,
+            proof: &CrossBiometricProof,
+        ) -> Result<(), Error<T>> {
+            ensure!(
+                proof.nullifier_a == *existing_nullifier && proof.nullifier_b == *new_nullifier,
+                Error::<T>::InvalidCrossBiometricProof
+            );
+            
+            let bounded_proof: BoundedVec<u8, ConstU32<8192>> = proof.zk_binding_proof.clone();
+            
+            let mut public_inputs = Vec::new();
+            public_inputs.push(
+                existing_nullifier.as_bytes().to_vec()
+                    .try_into()
+                    .map_err(|_| Error::<T>::InvalidCrossBiometricProof)?
+            );
+            public_inputs.push(
+                new_nullifier.as_bytes().to_vec()
+                    .try_into()
+                    .map_err(|_| Error::<T>::InvalidCrossBiometricProof)?
+            );
+            public_inputs.push(
+                proof.session_id.as_bytes().to_vec()
+                    .try_into()
+                    .map_err(|_| Error::<T>::InvalidCrossBiometricProof)?
+            );
+            
+            let bounded_inputs: BoundedVec<BoundedVec<u8, ConstU32<64>>, ConstU32<16>> = 
+                public_inputs
+                    .try_into()
+                    .map_err(|_| Error::<T>::InvalidCrossBiometricProof)?;
+            
+            let zk_proof = pallet_zk_credentials::ZkProof {
+                proof_type: pallet_zk_credentials::ProofType::CrossBiometric,
+                proof_data: bounded_proof,
+                public_inputs: bounded_inputs,
+                credential_hash: *existing_nullifier,
+                created_at: proof.captured_at,
+                nonce: *new_nullifier,
+            };
+            
+            pallet_zk_credentials::Pallet::<T::ZkCredentials>::verify_proof_internal(&zk_proof)
+                .map_err(|_| Error::<T>::InvalidCrossBiometricProof)?;
+            
+            Ok(())
+        }
+        
+        /// SECURITY CHECK: Verify credential issuance doesn't create duplicate personhoods
+        pub fn verify_single_personhood_for_credential(
+            _issuer_did: &H256,
+            subject_did: &H256,
+        ) -> Result<(), Error<T>> {
+            let subject_nullifier = DidToNullifier::<T>::get(subject_did)
+                .ok_or(Error::<T>::DidNotFound)?;
+            
+            if let Some(primary_did) = Self::get_personhood_for_nullifier(&subject_nullifier) {
+                ensure!(
+                    primary_did == *subject_did,
+                    Error::<T>::NullifierAlreadyBound
+                );
+            }
+            Ok(())
+        }
+
         /// Verify uniqueness proof
         fn verify_uniqueness_proof(
             nullifier: &H256,
             commitment: &H256,
             proof_bytes: &[u8],
         ) -> Result<(), Error<T>> {
-            // 1. Verify commitment structure
-            // Expected: commitment = Hash(biometric_hash || salt)
-            ensure!(
-                proof_bytes.len() >= 64,
-                Error::<T>::InvalidUniquenessProof
-            );
+            ensure!(proof_bytes.len() >= 64, Error::<T>::InvalidUniquenessProof);
             
             let salt = &proof_bytes[0..32];
             
-            // 2. Recompute commitment
             let mut preimage = Vec::new();
             preimage.extend_from_slice(nullifier.as_bytes());
             preimage.extend_from_slice(salt);
@@ -1424,15 +2030,11 @@ pub mod pallet {
                 Error::<T>::InvalidCommitment
             );
             
-            /// 4. LAYER 2: Verify nullifier is UNIQUE (not already registered)
-            // This is the PRIMARY uniqueness check - simple storage lookup
             ensure!(
                 !PersonhoodRegistry::<T>::contains_key(nullifier),
                 Error::<T>::NullifierAlreadyUsed
             );
 
-            // 5. LAYER 3: Verify ZK proof (if provided)
-            // Proves "I have a valid biometric" without revealing it
             if proof_bytes.len() > 32 {
                 let zk_proof_data = &proof_bytes[32..];
                 Self::verify_biometric_zk_proof(nullifier, commitment, zk_proof_data)?;
@@ -1447,24 +2049,19 @@ pub mod pallet {
             commitment: &H256,
             proof_bytes: &[u8],
         ) -> Result<(), Error<T>> {
-            // Convert to bounded format
             let bounded_proof: BoundedVec<u8, ConstU32<4096>> = proof_bytes
                 .to_vec()
                 .try_into()
                 .map_err(|_| Error::<T>::InvalidUniquenessProof)?;
             
-            // Public inputs: nullifier and commitment
-            // These are visible to everyone, but don't reveal biometric
             let mut public_inputs = Vec::new();
             
-            // Add nullifier as public input
             public_inputs.push(
                 nullifier.as_bytes().to_vec()
                     .try_into()
                     .map_err(|_| Error::<T>::InvalidUniquenessProof)?
             );
             
-            // Add commitment as public input
             public_inputs.push(
                 commitment.as_bytes().to_vec()
                     .try_into()
@@ -1476,21 +2073,22 @@ pub mod pallet {
                     .try_into()
                     .map_err(|_| Error::<T>::InvalidUniquenessProof)?;
             
-            // Create ZK proof structure
+            // Fixed: Pad proof data to 8192 bytes without using itertools
+            let mut proof_vec = bounded_proof.to_vec();
+            proof_vec.resize(8192, 0u8);
+            let padded_proof: BoundedVec<u8, ConstU32<8192>> = proof_vec
+                .try_into()
+                .map_err(|_| Error::<T>::InvalidProof)?;
+            
             let zk_proof = pallet_zk_credentials::ZkProof {
                 proof_type: pallet_zk_credentials::ProofType::Personhood,
-                proof_data: BoundedVec::try_from(bounded_proof.to_vec())
-                    .map_err(|_| Error::<T>::InvalidProof)?
-                    .into_iter()
-                    .pad_using(8192, |_| 0u8)
-                    .collect::<BoundedVec<_, ConstU32<8192>>>(),
+                proof_data: padded_proof,
                 public_inputs: bounded_inputs,
-                credential_hash: *commitment, // Use commitment as credential hash
+                credential_hash: *commitment,
                 created_at: <T as Config>::TimeProvider::now().saturated_into::<u64>(),
-                nonce: *nullifier, // Use nullifier as nonce to prevent replay
+                nonce: *nullifier,
             };
             
-            // Verify via ZK credentials pallet
             pallet_zk_credentials::Pallet::<T::ZkCredentials>::verify_proof_internal(&zk_proof)
                 .map_err(|_| Error::<T>::InvalidUniquenessProof)?;
             
@@ -1511,15 +2109,13 @@ pub mod pallet {
             );
             
             // 2. Get storage root hash
-            let root = sp_io::storage::root(sp_runtime::StateVersion::V1);
+            let root: H256 = sp_io::storage::root(sp_runtime::StateVersion::V1).into();
             
             // 3. Build storage key for this nullifier
-            // This is how Substrate stores the PersonhoodRegistry map
             let storage_key = Self::storage_key_for_nullifier(nullifier);
             
-            // 4. Generate trie proof
-            // This creates a minimal proof that this key exists in the state trie
-            let backend = sp_state_machine::Backend::<Blake2Hasher>::as_trie_backend()
+            // 4. Generate trie proof: This creates a minimal proof that this key exists in the state trie
+            let backend = <dyn sp_state_machine::Backend::<Blake2Hasher>>::as_trie_backend()
                 .ok_or(Error::<T>::InvalidUniquenessProof)?;
             
             let proof = generate_trie_proof::<LayoutV1<Blake2Hasher>, _, _, _>(
@@ -1528,7 +2124,29 @@ pub mod pallet {
                 &[&storage_key[..]]
             ).map_err(|_| Error::<T>::InvalidUniquenessProof)?;
             
-            Ok(proof.into_iter_nodes().map(|n| n.to_vec()).collect())
+            Ok(proof)
+        }
+
+        /// Register historical key for signature verification
+        pub fn register_historical_key(
+            did: &H256,
+            public_key: [u8; 32],
+        ) -> DispatchResult {
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
+            
+            HistoricalKeys::<T>::try_mutate(did, |keys| -> DispatchResult {
+                keys.try_push((public_key, now))
+                    .map_err(|_| Error::<T>::InvalidPublicKey)?;
+                Ok(())
+            })?;
+            
+            let key_hash: H256 = sp_io::hashing::blake2_256(&public_key).into();
+            Self::deposit_event(Event::HistoricalKeyRegistered {
+                did: *did,
+                key_hash,
+            });
+            
+            Ok(())
         }
         
         /// CROSS-CHAIN VERIFICATION: Verify Merkle proof from another chain
@@ -1548,7 +2166,7 @@ pub mod pallet {
             let result = verify_trie_proof::<LayoutV1<Blake2Hasher>, _, _, _>(
                 &state_root,
                 &proof_nodes,
-                &[(storage_key.as_slice(), None)], // Checking key exists
+                &[(storage_key.as_slice(), None::<&[u8]>)],
             );
             
             match result {
@@ -1558,10 +2176,8 @@ pub mod pallet {
         }
         
         /// Helper: Generate storage key for a nullifier
-        /// This matches Substrate's storage key format
         fn storage_key_for_nullifier(nullifier: &H256) -> Vec<u8> {
             use sp_io::hashing::twox_128;
-            use frame_support::storage::generator::StorageMap as _;
             
             // Format: twox128("ProofOfPersonhood") + twox128("PersonhoodRegistry") + blake2_128(nullifier) + nullifier
             let mut key = Vec::new();
@@ -1579,30 +2195,25 @@ pub mod pallet {
             key
         }
 
-        /// Enhanced recovery proof verification with ZK
         fn verify_recovery_proof(
             old_did: &H256,
             new_nullifier: &H256,
             proof_bytes: &[u8],
         ) -> Result<(), Error<T>> {
-            // Basic validation
             ensure!(
                 !proof_bytes.is_empty() && proof_bytes.len() <= 4096,
                 Error::<T>::InvalidRecoveryProof
             );
 
-            // Get old nullifier
             let old_nullifier = DidToNullifier::<T>::get(old_did)
                 .ok_or(Error::<T>::DidNotFound)?;
 
-            // If ZK proof provided, verify it
             if proof_bytes.len() > 64 {
-                let bounded_proof: BoundedVec<u8, ConstU32<4096>> = proof_bytes
+                let bounded_proof: BoundedVec<u8, ConstU32<8192>> = proof_bytes
                     .to_vec()
                     .try_into()
                     .map_err(|_| Error::<T>::InvalidRecoveryProof)?;
                 
-                // Public inputs: old_nullifier and new_nullifier
                 let mut public_inputs = Vec::new();
                 public_inputs.push(
                     old_nullifier.as_bytes().to_vec()
@@ -1622,33 +2233,15 @@ pub mod pallet {
                 
                 let zk_proof = pallet_zk_credentials::ZkProof {
                     proof_type: pallet_zk_credentials::ProofType::Personhood,
-                    proof_data: BoundedVec::try_from(bounded_proof.to_vec())
-                        .map_err(|_| Error::<T>::InvalidProof)?
-                        .into_iter()
-                        .pad_using(8192, |_| 0u8)
-                        .collect::<BoundedVec<_, ConstU32<8192>>>(),
+                    proof_data: bounded_proof,
                     public_inputs: bounded_inputs,
                     credential_hash: *old_did,
                     created_at: <T as Config>::TimeProvider::now().saturated_into::<u64>(),
                     nonce: *new_nullifier,
                 };
                 
-                // Verify the recovery proof links old and new identities
                 pallet_zk_credentials::Pallet::<T::ZkCredentials>::verify_proof_internal(&zk_proof)
                     .map_err(|_| Error::<T>::InvalidRecoveryProof)?;
-            } else {
-                // Fallback: Simple hash-based verification (less secure)
-                let mut data = Vec::new();
-                data.extend_from_slice(old_did.as_bytes());
-                data.extend_from_slice(new_nullifier.as_bytes());
-                data.extend_from_slice(proof_bytes);
-                
-                let proof_hash = sp_io::hashing::blake2_256(&data);
-                
-                ensure!(
-                    proof_hash != [0u8; 32],
-                    Error::<T>::InvalidRecoveryProof
-                );
             }
 
             Ok(())
@@ -1680,7 +2273,10 @@ pub mod pallet {
             );
             
             match result {
-                Ok(items) => Ok(items.into_iter().map(|(_, v)| v.is_some()).collect()),
+                Ok(_) => {
+                    // All keys verified, return true for each
+                    Ok(vec![true; nullifiers.len()])
+                },
                 Err(_) => Ok(vec![false; nullifiers.len()]),
             }
         }
@@ -1691,13 +2287,11 @@ pub mod pallet {
         ) -> u32 {
             let mut score: u32 = 0;
             
-            // Component 1: Guardian votes (0-30 points)
             let guardian_score: u32 = recovery.guardian_votes.iter()
                 .map(|(guardian, vote_strength)| {
                     GuardianRelationships::<T>::get(&recovery.did, guardian)
                         .map(|rel| {
                             let base = (*vote_strength as u32) * (rel.relationship_strength as u32);
-                            // Older relationships get bonus
                             let age_bonus = if now.saturating_sub(rel.established_at) > (365 * 24 * 60 * 60) {
                                 2
                             } else {
@@ -1710,27 +2304,22 @@ pub mod pallet {
                 .sum();
             score = score.saturating_add(guardian_score.min(30));
             
-            // Component 2: Behavioral biometric (0-30 points)
             let behavioral_score = (recovery.behavioral_confidence as u32 * 30) / 100;
             score = score.saturating_add(behavioral_score);
             
-            // Component 3: Historical proof (0-20 points)
             let historical_score = (recovery.historical_proof_strength as u32 * 20) / 100;
             score = score.saturating_add(historical_score);
             
-            // Component 4: Economic stake (0-20 points)
             let stake_score = {
                 let stake_u128 = recovery.economic_stake.saturated_into::<u128>();
                 ((stake_u128 / 1000) as u32).min(20)
             };
             score = score.saturating_add(stake_score);
             
-            // Component 5: Time elapsed (0-30 points)
             let elapsed = now.saturating_sub(recovery.requested_at);
             let time_score = if elapsed >= recovery.finalization_delay {
                 30
             } else {
-                // Linear growth: 30 points over finalization_delay period
                 ((elapsed as u128 * 30) / recovery.finalization_delay as u128) as u32
             };
             score = score.saturating_add(time_score);
@@ -1738,126 +2327,148 @@ pub mod pallet {
             score
         }
         
-        /// Verify behavioral pattern
-        fn verify_behavioral_pattern(
+        /// Verify behavioral pattern with feature analysis
+        pub fn verify_behavioral_pattern(
             did: &H256,
             pattern_data: &[u8],
         ) -> Result<u8, Error<T>> {
-            // Get stored patterns
-            let stored_patterns = BehavioralPatterns::<T>::get(did);
+            // Decode features
+            let features = BehavioralFeatures::decode(&mut &pattern_data[..])
+                .map_err(|_| Error::<T>::InvalidFeatureData)?;
             
-            if stored_patterns.is_empty() {
-                return Ok(0); // No patterns to compare
+            // Validate features
+            ensure!(features.typing_speed_wpm > 0, Error::<T>::InvalidFeatureData);
+            ensure!(features.error_rate_percent <= 100, Error::<T>::InvalidFeatureData);
+            ensure!(features.activity_hour_preference < 24, Error::<T>::InvalidFeatureData);
+            
+            // Get stored samples and envelope
+            let samples = BehavioralPatternSamples::<T>::get(did);
+            let envelope = BehavioralEnvelopes::<T>::get(did);
+            
+            if samples.is_empty() {
+                // No baseline - store this as first sample
+                Self::store_behavioral_sample(did, &features)?;
+                return Ok(0); // Return 0 confidence (no baseline to compare)
             }
             
-            // Hash provided pattern
-            let provided_hash: H256 = sp_io::hashing::blake2_256(pattern_data).into();
-            
-            // Check if matches any stored pattern
-            if stored_patterns.contains(&provided_hash) {
-                return Ok(100); // Perfect match
-            } else {
-                // In production, we will use ML model for fuzzy matching
-                // For now: simple hamming distance
-                let mut best_match: u8 = 0;
-                for stored in stored_patterns.iter() {
-                    let similarity = Self::calculate_hash_similarity(&provided_hash, stored);
-                    if similarity > best_match {
-                        best_match = similarity;
-                    }
+            // STEP 1: Quick rejection - check if within statistical envelope
+            if let Some(env) = &envelope {
+                let (within_bounds, violations) = Self::is_within_envelope(&features, env);
+                if !within_bounds && violations.len() > 2 {
+                    // Multiple feature violations = likely not the same person
+                    Self::deposit_event(Event::PatternRejected {
+                        did: *did,
+                        violations: violations.clone(),
+                    });
+                    return Ok(0);
                 }
-                return Ok(best_match);
-            }
-
-            /// Check if nullifier is part of ANY personhood
-            pub fn get_personhood_for_nullifier(nullifier: &H256) -> Option<H256> {
-                BiometricBindings::<T>::get(nullifier)
             }
             
-            /// Verify cross-biometric ZK proof
-            fn verify_cross_biometric_proof(
-                existing_nullifier: &H256,
-                new_nullifier: &H256,
-                proof: &CrossBiometricProof,
-            ) -> Result<(), Error<T>> {
-                // Verify proof references correct nullifiers
-                ensure!(
-                    proof.nullifier_a == *existing_nullifier && proof.nullifier_b == *new_nullifier,
-                    Error::<T>::InvalidCrossBiometricProof
+            // STEP 2: Calculate weighted distance to each stored sample
+            let weights = FeatureWeights::default();
+            let mut min_distance = u32::MAX;
+            let mut best_match_age = 0u64;
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
+            
+            for stored_pattern in samples.iter() {
+                let distance = Self::calculate_weighted_distance(
+                    &features,
+                    &stored_pattern.features,
+                    &weights,
                 );
                 
-                // Convert to ZK proof format
-                let bounded_proof: BoundedVec<u8, ConstU32<8192>> = proof.zk_binding_proof.clone();
-                
-                // Public inputs: both nullifiers + session_id
-                let mut public_inputs = Vec::new();
-                public_inputs.push(
-                    existing_nullifier.as_bytes().to_vec()
-                        .try_into()
-                        .map_err(|_| Error::<T>::InvalidCrossBiometricProof)?
-                );
-                public_inputs.push(
-                    new_nullifier.as_bytes().to_vec()
-                        .try_into()
-                        .map_err(|_| Error::<T>::InvalidCrossBiometricProof)?
-                );
-                public_inputs.push(
-                    proof.session_id.as_bytes().to_vec()
-                        .try_into()
-                        .map_err(|_| Error::<T>::InvalidCrossBiometricProof)?
-                );
-                
-                let bounded_inputs: BoundedVec<BoundedVec<u8, ConstU32<64>>, ConstU32<16>> = 
-                    public_inputs
-                        .try_into()
-                        .map_err(|_| Error::<T>::InvalidCrossBiometricProof)?;
-                
-                // Create ZK proof structure
-                let zk_proof = pallet_zk_credentials::ZkProof {
-                    proof_type: pallet_zk_credentials::ProofType::CrossBiometric,
-                    proof_data: BoundedVec::try_from(bounded_proof.to_vec())
-                        .map_err(|_| Error::<T>::InvalidProof)?
-                        .into_iter()
-                        .pad_using(8192, |_| 0u8)
-                        .collect::<BoundedVec<_, ConstU32<8192>>>(),
-                    public_inputs: bounded_inputs,
-                    credential_hash: *existing_nullifier,
-                    created_at: proof.captured_at,
-                    nonce: *new_nullifier,
+                if distance < min_distance {
+                    min_distance = distance;
+                    best_match_age = now.saturating_sub(stored_pattern.recorded_at);
+                }
+            }
+            
+            // STEP 3: Calculate base confidence score
+            let base_confidence = Self::calculate_match_confidence(
+                min_distance,
+                envelope.as_ref().unwrap(),
+                samples.len() as u32,
+            );
+            
+            // STEP 4: Apply temporal decay (patterns older than 90 days lose confidence)
+            let ninety_days = 90 * 24 * 60 * 60u64;
+            let decay_factor = if best_match_age < ninety_days {
+                100u32
+            } else {
+                let excess_age = best_match_age.saturating_sub(ninety_days);
+                let decay = (excess_age * 50) / (365 * 24 * 60 * 60); // 50% decay over a year
+                100u32.saturating_sub(decay as u32)
+            };
+            
+            let final_confidence = ((base_confidence as u32 * decay_factor) / 100) as u8;
+            
+            // STEP 5: Detect drift (for adaptive learning)
+            let drift = Self::detect_pattern_drift(did, &features, &samples[..]);
+            match drift {
+                DriftAnalysis::SuddenChange { distance, confidence } => {
+                    // Log potential takeover attempt
+                    Self::deposit_event(Event::AnomalousPatternDetected {
+                        did: *did,
+                        distance,
+                        confidence,
+                    });
+                    // Don't update envelope for sudden changes
+                },
+                DriftAnalysis::GradualDrift { accept_update, .. } => {
+                    if accept_update && final_confidence > 70 {
+                        // Natural evolution - update envelope and store sample
+                        let _ = Self::update_behavioral_envelope(did, &features);
+                        let _ = Self::store_behavioral_sample(did, &features);
+                    }
+                },
+                DriftAnalysis::NormalVariation { .. } => {
+                    // Normal variation - store sample if confidence is high
+                    if final_confidence > 80 {
+                        let _ = Self::store_behavioral_sample(did, &features);
+                    }
+                },
+                DriftAnalysis::InsufficientData => {
+                    // Not enough historical data yet
+                    let _ = Self::store_behavioral_sample(did, &features);
+                }
+            }
+            
+            Ok(final_confidence)
+        }
+
+        /// Store a new behavioral sample (maintains rolling window of 10)
+        fn store_behavioral_sample(
+            did: &H256,
+            features: &BehavioralFeatures,
+        ) -> Result<(), Error<T>> {
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
+            
+            BehavioralPatternSamples::<T>::try_mutate(did, |samples| -> Result<(), Error<T>> {
+                let new_sample = StoredBehavioralPattern {
+                    features: features.clone(),
+                    recorded_at: now,
+                    sample_count: 1,
+                    confidence_score: 0,
                 };
                 
-                // Verify via ZK credentials pallet
-                pallet_zk_credentials::Pallet::<T::ZkCredentials>::verify_proof_internal(&zk_proof)
-                    .map_err(|_| Error::<T>::InvalidCrossBiometricProof)?;
+                // If at capacity, remove oldest
+                if samples.len() >= 10 {
+                    samples.remove(0);
+                }
+                
+                samples.try_push(new_sample)
+                    .map_err(|_| Error::<T>::InvalidBehavioralProof)?;
                 
                 Ok(())
-            }
+            })?;
             
-            /// SECURITY CHECK: Verify credential issuance doesn't create duplicate personhoods
-            pub fn verify_single_personhood_for_credential(
-                issuer_did: &H256,
-                subject_did: &H256,
-            ) -> Result<(), Error<T>> {
-                // Get subject's nullifier
-                let subject_nullifier = DidToNullifier::<T>::get(subject_did)
-                    .ok_or(Error::<T>::DidNotFound)?;
-                
-                // Check if this nullifier is part of a personhood binding
-                if let Some(primary_did) = Self::get_personhood_for_nullifier(&subject_nullifier) {
-                    // Ensure this is the primary DID or a legitimate bound DID
-                    ensure!(
-                        primary_did == *subject_did,
-                        Error::<T>::NullifierAlreadyBound
-                    );
-                    Ok(())
-                } else {
-                    // No personhood registered yet - this is the first credential
-                    Ok(())
-                }
-            }
+            // Update envelope
+            Self::update_behavioral_envelope(did, features)?;
+            
+            Ok(())
         }
         
-        /// Calculate similarity between two hashes (0-100)
+        /// Calculate hash similarity (Hamming distance based)
         fn calculate_hash_similarity(hash1: &H256, hash2: &H256) -> u8 {
             let bytes1 = hash1.as_bytes();
             let bytes2 = hash2.as_bytes();
@@ -1870,37 +2481,226 @@ pub mod pallet {
             ((matching_bits * 100) / 256) as u8
         }
         
-        /// Verify historical access proof
+        /// Verify historical access proof with real cryptographic signatures
         fn verify_historical_proof(
-            _did: &H256,
+            did: &H256,
             proof_data: &[u8],
         ) -> Result<u8, Error<T>> {
-            // Proof format: old_signature || message || timestamp
-            if proof_data.len() < 96 {
+            // Proof format: [count: 1][signatures: Vec<HistoricalSignature>]
+            if proof_data.is_empty() {
                 return Ok(0);
             }
             
-            // In production: verify signature against old keys
-            // For now: hash-based verification
-            let proof_hash = sp_io::hashing::blake2_256(proof_data);
-            
-            // Non-zero hash = valid proof (simplified)
-            if proof_hash != [0u8; 32] {
-                Ok(85) // Good confidence
-            } else {
-                Ok(0)
+            let signature_count = proof_data[0] as usize;
+            if signature_count == 0 {
+                return Ok(0);
             }
+            
+            // Each signature: 8 (timestamp) + 64 (signature) + 32 (pubkey) + 32 (msg_hash) = 136 bytes
+            let required_len = 1 + (signature_count * 136);
+            if proof_data.len() < required_len {
+                return Err(Error::<T>::InvalidHistoricalProof);
+            }
+            
+            // Get stored historical keys for this DID
+            let historical_keys = HistoricalKeys::<T>::get(did);
+            if historical_keys.is_empty() {
+                return Ok(0);
+            }
+            
+            let mut verified_count = 0u32;
+            let mut oldest_verified_timestamp = 0u64;
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
+            
+            for i in 0..signature_count {
+                let offset = 1 + (i * 136);
+                
+                let timestamp = u64::from_le_bytes(
+                    proof_data[offset..offset + 8].try_into()
+                        .map_err(|_| Error::<T>::InvalidHistoricalProof)?
+                );
+                
+                let signature_bytes = &proof_data[offset + 8..offset + 72];
+                let public_key_bytes = &proof_data[offset + 72..offset + 104];
+                let message_hash_bytes = &proof_data[offset + 104..offset + 136];
+                
+                // Signature must be from the past
+                if timestamp >= now {
+                    continue;
+                }
+                
+                // Verify public key exists in historical keys
+                let key_valid = historical_keys.iter().any(|(key, registered_at)| {
+                    key == public_key_bytes && *registered_at <= timestamp
+                });
+                
+                if !key_valid {
+                    continue;
+                }
+                
+                // Parse cryptographic types
+                let public_key = match sr25519::Public::try_from(public_key_bytes) {
+                    Ok(pk) => pk,
+                    Err(_) => continue,
+                };
+                
+                let signature = match sr25519::Signature::try_from(signature_bytes) {
+                    Ok(sig) => sig,
+                    Err(_) => continue,
+                };
+                
+                let message_hash: [u8; 32] = match message_hash_bytes.try_into() {
+                    Ok(hash) => hash,
+                    Err(_) => continue,
+                };
+                
+                // Verify signature
+                if sr25519_verify(&signature, &message_hash, &public_key) {
+                    verified_count += 1;
+                    
+                    let age = now.saturating_sub(timestamp);
+                    if age > oldest_verified_timestamp {
+                        oldest_verified_timestamp = age;
+                    }
+                }
+            }
+            
+            // Calculate confidence score
+            // Component 1: Number of verified signatures (max 50 points)
+            let signature_score = (verified_count * 10).min(50);
+            
+            // Component 2: Age of oldest signature (max 50 points)
+            let one_year = 365 * 24 * 60 * 60u64;
+            let age_score = ((oldest_verified_timestamp as u128 * 50) / one_year as u128)
+                .min(50) as u32;
+            
+            let total_score = (signature_score + age_score).min(100);
+            Ok(total_score as u8)
         }
         
-        /// Verify fraud proof
+        /// Verify fraud proof with cryptographic signatures
         fn verify_fraud_proof(
-            _did: &H256,
-            _guardian: &T::AccountId,
+            did: &H256,
+            guardian: &T::AccountId,
             proof: &[u8],
         ) -> bool {
-            // In production: escalate to governance or oracle network
-            // For now: simple check
-            !proof.is_empty() && proof.len() >= 32
+            // Proof format: [sig: 64 bytes][timestamp: 8 bytes][evidence_hash: 32 bytes][public_key: 32 bytes]
+            if proof.len() < 136 {
+                return false;
+            }
+            
+            let signature_bytes = &proof[0..64];
+            let timestamp_bytes = &proof[64..72];
+            let evidence_hash = &proof[72..104];
+            let public_key_bytes = &proof[104..136];
+            
+            // Parse timestamp
+            let timestamp = u64::from_le_bytes(
+                match timestamp_bytes.try_into() {
+                    Ok(bytes) => bytes,
+                    Err(_) => return false,
+                }
+            );
+            
+            // Verify proof is recent (within 7 days)
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
+            if now.saturating_sub(timestamp) > MAX_FRAUD_PROOF_AGE {
+                return false;
+            }
+            
+            // Verify guardian exists
+            let relationship = match GuardianRelationships::<T>::get(did, guardian) {
+                Some(rel) => rel,
+                None => return false,
+            };
+            
+            // Build message for signature verification
+            let mut message = Vec::new();
+            message.extend_from_slice(b"FRAUD:");
+            message.extend_from_slice(did.as_bytes());
+            message.extend_from_slice(&guardian.encode());
+            message.extend_from_slice(evidence_hash);
+            message.extend_from_slice(&timestamp.to_le_bytes());
+            
+            let message_hash = sp_io::hashing::blake2_256(&message);
+            
+            // Convert to sr25519 types
+            let public_key = match sr25519::Public::try_from(public_key_bytes) {
+                Ok(pk) => pk,
+                Err(_) => return false,
+            };
+            
+            let signature = match sr25519::Signature::try_from(signature_bytes) {
+                Ok(sig) => sig,
+                Err(_) => return false,
+            };
+            
+            // Verify signature using sr25519
+            if !sr25519_verify(&signature, &message_hash, &public_key) {
+                return false;
+            }
+            
+            // Verify evidence hash is substantive
+            if evidence_hash == &[0u8; 32] {
+                return false;
+            }
+            
+            // Check guardian's approval history for suspicious patterns
+            let guardian_approval_count = GuardianApprovals::<T>::iter()
+                .filter(|(_, approvals)| approvals.contains(guardian))
+                .count();
+            
+            // Suspicious if too many recent approvals
+            if guardian_approval_count > MAX_GUARDIAN_APPROVALS {
+                return true;
+            }
+            
+            // All checks passed
+            relationship.relationship_strength > 0
+        }
+
+        /// Record behavioral pattern with features
+        pub fn record_behavioral_pattern_internal(
+            did: &H256,
+            features: &BehavioralFeatures,
+        ) -> DispatchResult {
+            let features_encoded = features.encode();
+            let features_hash: H256 = sp_io::hashing::blake2_256(&features_encoded).into();
+            let pattern_hash: H256 = sp_io::hashing::blake2_256(&features.encode()).into();
+            
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
+            
+            BehavioralPatterns::<T>::try_mutate(did, |patterns| -> DispatchResult {
+                // Check if pattern already exists
+                if let Some(existing) = patterns.iter_mut().find(|p| p.features_hash == features_hash) {
+                    existing.sample_count = existing.sample_count.saturating_add(1);
+                    existing.recorded_at = now;
+                    
+                    Self::deposit_event(Event::BehavioralPatternRecorded {
+                        did: *did,
+                        pattern_hash,
+                        sample_count: existing.sample_count,
+                    });
+                } else {
+                    let new_pattern = StoredBehavioralPattern {
+                        pattern_hash,
+                        features_hash,
+                        recorded_at: now,
+                        sample_count: 1,
+                    };
+                    
+                    patterns.try_push(new_pattern)
+                        .map_err(|_| Error::<T>::InvalidBehavioralProof)?;
+                    
+                    Self::deposit_event(Event::BehavioralPatternRecorded {
+                        did: *did,
+                        pattern_hash,
+                        sample_count: 1,
+                    });
+                }
+                
+                Ok(())
+            })
         }
 
         /// Validate nullifier format
