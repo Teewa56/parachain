@@ -20,6 +20,18 @@ pub trait WeightInfo {
     fn store_ml_score() -> Weight;
     fn set_ml_service_url() -> Weight;
     fn queue_for_ml_scoring() -> Weight;
+    fn add_ml_service_key() -> Weight;
+    fn revoke_ml_service_key() -> Weight;
+    fn register_oracle() -> Weight;
+    fn deactivate_oracle() -> Weight;
+    fn set_consensus_threshold() -> Weight;
+    fn set_variance_tolerance() -> Weight;
+    fn submit_fraud_challenge() -> Weight;
+    fn resolve_fraud_challenge() -> Weight;
+    fn update_tee_attestation() -> Weight;
+    fn add_intel_root_key() -> Weight;
+    fn add_amd_root_key() -> Weight;
+    fn set_intel_ias_endpoint() -> Weight;
 }
 
 pub struct SubstrateWeight<T>(core::marker::PhantomData<T>);
@@ -131,6 +143,77 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
             .saturating_add(T::DbWeight::get().reads(1))
             .saturating_add(T::DbWeight::get().writes(1))
     }
+
+    fn add_ml_service_key() -> Weight {
+        Weight::from_parts(20_000_000, 0)
+            .saturating_add(T::DbWeight::get().reads(1))
+            .saturating_add(T::DbWeight::get().writes(1))
+    }
+
+    fn revoke_ml_service_key() -> Weight {
+        Weight::from_parts(18_000_000, 0)
+            .saturating_add(T::DbWeight::get().reads(1))
+            .saturating_add(T::DbWeight::get().writes(1))
+    }
+
+    fn register_oracle() -> Weight {
+        Weight::from_parts(30_000_000, 0)
+            .saturating_add(T::DbWeight::get().reads(2))
+            .saturating_add(T::DbWeight::get().writes(2))
+    }
+
+    fn deactivate_oracle() -> Weight {
+        Weight::from_parts(25_000_000, 0)
+            .saturating_add(T::DbWeight::get().reads(2))
+            .saturating_add(T::DbWeight::get().writes(2))
+    }
+
+    fn set_consensus_threshold() -> Weight {
+        Weight::from_parts(15_000_000, 0)
+            .saturating_add(T::DbWeight::get().writes(1))
+    }
+
+    fn set_variance_tolerance() -> Weight {
+        Weight::from_parts(15_000_000, 0)
+            .saturating_add(T::DbWeight::get().writes(1))
+    }
+
+    fn submit_fraud_challenge() -> Weight {
+        Weight::from_parts(40_000_000, 0)
+            .saturating_add(T::DbWeight::get().reads(3))
+            .saturating_add(T::DbWeight::get().writes(2))
+    }
+
+    fn resolve_fraud_challenge() -> Weight {
+        Weight::from_parts(50_000_000, 0)
+            .saturating_add(T::DbWeight::get().reads(4))
+            .saturating_add(T::DbWeight::get().writes(3))
+    }
+
+    fn update_tee_attestation() -> Weight {
+        Weight::from_parts(20_000_000, 0)
+            .saturating_add(T::DbWeight::get().reads(1))
+            .saturating_add(T::DbWeight::get().writes(1))
+    }
+
+    fn add_intel_root_key() -> Weight {
+        Weight::from_parts(25_000_000, 0)
+            .saturating_add(T::DbWeight::get().reads(2))
+            .saturating_add(T::DbWeight::get().writes(2))
+    }
+
+    fn add_amd_root_key() -> Weight {
+        Weight::from_parts(25_000_000, 0)
+            .saturating_add(T::DbWeight::get().reads(2))
+            .saturating_add(T::DbWeight::get().writes(2))
+    }
+
+    fn set_intel_ias_endpoint() -> Weight {
+        Weight::from_parts(15_000_000, 0)
+            .saturating_add(T::DbWeight::get().reads(1))
+            .saturating_add(T::DbWeight::get().writes(1))
+    }
+
 }
 
 impl WeightInfo for () {
@@ -152,4 +235,16 @@ impl WeightInfo for () {
     fn store_ml_score() -> Weight { Weight::from_parts(10_000, 0) }
     fn set_ml_service_url() -> Weight { Weight::from_parts(10_000, 0) }
     fn queue_for_ml_scoring() -> Weight { Weight::from_parts(10_000, 0) }
+    fn add_ml_service_key() -> Weight { Weight::from_parts(10_000, 0) }
+    fn revoke_ml_service_key() -> Weight { Weight::from_parts(10_000, 0) }
+    fn register_oracle() -> Weight { Weight::from_parts(10_000, 0) }
+    fn deactivate_oracle() -> Weight { Weight::from_parts(10_000, 0) }
+    fn set_consensus_threshold() -> Weight { Weight::from_parts(10_000, 0) }
+    fn set_variance_tolerance() -> Weight { Weight::from_parts(10_000, 0) }
+    fn submit_fraud_challenge() -> Weight { Weight::from_parts(10_000, 0) }
+    fn resolve_fraud_challenge() -> Weight { Weight::from_parts(10_000, 0) }
+    fn update_tee_attestation() -> Weight { Weight::from_parts(10_000, 0) }
+    fn add_intel_root_key() -> Weight { Weight::from_parts(10_000, 0) }
+    fn add_amd_root_key() -> Weight { Weight::from_parts(10_000, 0) }
+    fn set_intel_ias_endpoint() -> Weight { Weight::from_parts(10_000, 0) } 
 }
