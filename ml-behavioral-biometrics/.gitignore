@@ -1,1 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+*.egg-info/
+
+# Models & Data
+models/production/*.pth
+models/checkpoints/*.pth
+data/raw/*.csv
+data/processed/*.npy
+*.pkl
+
+# Logs
+logs/*.log
+*.log
+
+# Environment
 .env
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+.dockerignore
+docker-compose.override.yml

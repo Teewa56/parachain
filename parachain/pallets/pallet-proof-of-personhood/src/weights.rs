@@ -17,6 +17,9 @@ pub trait WeightInfo {
     fn register_primary_personhood() -> Weight;
     fn bind_additional_biometric() -> Weight;
     fn register_historical_key() -> Weight;
+    fn store_ml_score() -> Weight;
+    fn set_ml_service_url() -> Weight;
+    fn queue_for_ml_scoring() -> Weight;
 }
 
 pub struct SubstrateWeight<T>(core::marker::PhantomData<T>);
@@ -110,6 +113,24 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
             .saturating_add(T::DbWeight::get().reads(2))
             .saturating_add(T::DbWeight::get().writes(1))
     }
+
+    fn store_ml_score() -> Weight {
+        Weight::from_parts(20_000_000, 0)
+            .saturating_add(T::DbWeight::get().reads(1))
+            .saturating_add(T::DbWeight::get().writes(1))
+    }
+
+    fn set_ml_service_url() -> Weight {
+        Weight::from_parts(15_000_000, 0)
+            .saturating_add(T::DbWeight::get().reads(1))
+            .saturating_add(T::DbWeight::get().writes(1))
+    }
+
+    fn queue_for_ml_scoring() -> Weight {
+        Weight::from_parts(18_000_000, 0)
+            .saturating_add(T::DbWeight::get().reads(1))
+            .saturating_add(T::DbWeight::get().writes(1))
+    }
 }
 
 impl WeightInfo for () {
@@ -127,4 +148,8 @@ impl WeightInfo for () {
     fn record_behavioral_pattern() -> Weight { Weight::from_parts(10_000, 0) }
     fn register_primary_personhood() -> Weight { Weight::from_parts(10_000, 0) }
     fn bind_additional_biometric() -> Weight { Weight::from_parts(10_000, 0) }
+    fn register_historical_key() -> Weight { Weight::from_parts(10_000, 0) }
+    fn store_ml_score() -> Weight { Weight::from_parts(10_000, 0) }
+    fn set_ml_service_url() -> Weight { Weight::from_parts(10_000, 0) }
+    fn queue_for_ml_scoring() -> Weight { Weight::from_parts(10_000, 0) }
 }

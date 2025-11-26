@@ -7,6 +7,26 @@ mod benchmarking;
 
 pub mod weights;
 
+pub mod crypto {
+    use super::KEY_TYPE;
+    use sp_core::sr25519::Signature as Sr25519Signature;
+    use sp_runtime::{
+        app_crypto::{app_crypto, sr25519},
+        traits::Verify,
+        MultiSignature, MultiSigner,
+    };
+    
+    app_crypto!(sr25519, KEY_TYPE);
+    
+    pub struct TestAuthId;
+    
+    impl frame_system::offchain::AppCrypto<MultiSigner, MultiSignature> for TestAuthId {
+        type RuntimeAppPublic = Public;
+        type GenericSignature = sp_core::sr25519::Signature;
+        type GenericPublic = sp_core::sr25519::Public;
+    }
+}
+
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
@@ -26,9 +46,15 @@ pub mod pallet {
     use pallet_zk_credentials;
     use codec::DecodeWithMemTracking;
     use itertools::Itertools;
-    use sp_io::crypto::sr25519_verify;
+    use sp_io::crypto::{ sr25519_verify, KeyTypeId };
+    use sp_runtime::offchain::{
+        http,
+        Duration,
+    };
 
     type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+
+    pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"bbio"); // Behavioral Biometrics
 
     /// 6 months in seconds
     const RECOVERY_DELAY_SECONDS: u64 = 6 * 30 * 24 * 60 * 60;
@@ -66,6 +92,8 @@ pub mod pallet {
         type RecoveryDeposit: Get<BalanceOf<Self>>;
         type ZkCredentials: pallet_zk_credentials::Config;
         type WeightInfo: WeightInfo;
+        /// Authority identifier for off-chain worker
+        type AuthorityId: AppCrypto<Self::Public, Self::Signature>;
     }
 
     /// Personhood proof structure
@@ -463,6 +491,37 @@ pub mod pallet {
         ValueQuery,
     >;
 
+    /// Storage for patterns pending ML scoring
+    #[pallet::storage]
+    #[pallet::getter(fn pending_ml_patterns)]
+    pub type PendingMLPatterns<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        H256, // DID
+        BehavioralFeatures,
+        OptionQuery,
+    >;
+
+    /// Storage for ML scores received from off-chain worker
+    #[pallet::storage]
+    #[pallet::getter(fn ml_scores)]
+    pub type MLScores<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        H256, // DID
+        (u8, u64), // (score, timestamp)
+        OptionQuery,
+    >;
+
+    // Configuration for ML service endpoint
+    #[pallet::storage]
+    #[pallet::getter(fn ml_service_url)]
+    pub type MLServiceUrl<T: Config> = StorageValue<
+        _, 
+        BoundedVec<u8, ConstU32<256>>, 
+        ValueQuery
+    >;
+
     /// Drift analysis result
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
     pub enum DriftAnalysis {
@@ -585,6 +644,14 @@ pub mod pallet {
             did: H256,
             violations: Vec<u8>,
         },
+        /// ML confidence score stored
+        MLScoreStored {
+            did: H256,
+            score: u8,
+            timestamp: u64,
+        },        
+        /// Pattern queued for ML scoring
+        PatternQueuedForML { did: H256 },
     }
 
     #[pallet::error]
@@ -628,6 +695,21 @@ pub mod pallet {
         SignatureTooOld,
         InvalidFeatureData,
         PatternMismatch,
+        InvalidMLServiceUrl,
+    }
+
+    #[pallet::hooks]
+    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+        fn offchain_worker(block_number: T::BlockNumber) {
+            // Run ML inference every 10 blocks
+            if (block_number % 10u32.into()).is_zero() {
+                log::info!(" Running ML inference at block {:?}", block_number);
+                
+                if let Err(e) = Self::run_ml_inference(block_number) {
+                    log::error!(" ML inference failed: {:?}", e);
+                }
+            }
+        }
     }
 
     #[pallet::call]
@@ -1544,9 +1626,292 @@ pub mod pallet {
             
             Ok(())
         }
+
+        /// Store ML confidence score (called by off-chain worker)
+        #[pallet::call_index(15)]
+        #[pallet::weight(<T as Config>::WeightInfo::store_ml_score())]
+        pub fn store_ml_score(
+            origin: OriginFor<T>,
+            did: H256,
+            score: u8,
+        ) -> DispatchResult {
+            // Can only be called by off-chain worker
+            ensure_none(origin)?;
+            
+            // Validate score
+            ensure!(score <= 100, Error::<T>::InvalidFeatureData);
+            
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
+            
+            // Store ML score
+            MLScores::<T>::insert(&did, (score, now));
+            
+            // Remove from pending queue
+            PendingMLPatterns::<T>::remove(&did);
+            
+            Self::deposit_event(Event::MLScoreStored {
+                did,
+                score,
+                timestamp: now,
+            });
+            
+            Ok(())
+        }
+        
+        /// Set ML service URL (governance only)
+        #[pallet::call_index(16)]
+        #[pallet::weight(<T as Config>::WeightInfo::set_ml_service_url())]
+        pub fn set_ml_service_url(
+            origin: OriginFor<T>,
+            url: Vec<u8>,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+            
+            let bounded_url: BoundedVec<u8, ConstU32<256>> = url
+                .try_into()
+                .map_err(|_| Error::<T>::InvalidFeatureData)?;
+            
+            MLServiceUrl::<T>::put(bounded_url);
+            
+            Ok(())
+        }
+        
+        /// Queue pattern for ML scoring
+        #[pallet::call_index(17)]
+        #[pallet::weight(<T as Config>::WeightInfo::queue_for_ml_scoring())]
+        pub fn queue_for_ml_scoring(
+            origin: OriginFor<T>,
+            pattern_data: Vec<u8>,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            
+            // Get DID from account
+            let (did, identity) = pallet_identity_registry::pallet::Pallet::<T>::get_identity_by_account(&who)
+                .ok_or(Error::<T>::DidNotFound)?;
+            
+            ensure!(identity.active, Error::<T>::NotAuthorized);
+            
+            // Decode features
+            let features = BehavioralFeatures::decode(&mut &pattern_data[..])
+                .map_err(|_| Error::<T>::InvalidFeatureData)?;
+            
+            // Store in pending queue
+            PendingMLPatterns::<T>::insert(&did, features);
+            
+            Self::deposit_event(Event::PatternQueuedForML { did });
+            
+            Ok(())
+        }
     }
 
     impl<T: Config> Pallet<T> {
+        /// Main off-chain worker function
+        fn run_ml_inference(block_number: T::BlockNumber) -> Result<(), &'static str> {
+            // Check if we have signing keys
+            let signer = Self::get_signer().ok_or("No signing key available")?;
+            
+            // Fetch pending patterns
+            let pending_patterns = Self::get_pending_ml_patterns();
+            
+            if pending_patterns.is_empty() {
+                log::debug!("No pending patterns to process");
+                return Ok(());
+            }
+            
+            log::info!("Processing {} pending patterns", pending_patterns.len());
+            
+            // Process each pattern
+            for (did, features) in pending_patterns.iter() {
+                match Self::call_ml_service(features) {
+                    Ok(score) => {
+                        log::info!("ML score for DID {:?}: {}", did, score);
+                        
+                        // Submit signed transaction with result
+                        if let Err(e) = Self::submit_ml_score_transaction(&signer, *did, score) {
+                            log::error!(" Failed to submit ML score for {:?}: {:?}", did, e);
+                        }
+                    },
+                    Err(e) => {
+                        log::error!(" ML service call failed for {:?}: {:?}", did, e);
+                    }
+                }
+            }
+            
+            Ok(())
+        }
+
+        /// Get pending patterns that need ML scoring
+        fn get_pending_ml_patterns() -> Vec<(H256, BehavioralFeatures)> {
+            let mut patterns = Vec::new();
+            
+            // Iterate through pending patterns
+            for (did, features) in PendingMLPatterns::<T>::iter() {
+                // Only process if we don't have a recent ML score
+                if !Self::has_recent_ml_score(&did) {
+                    patterns.push((did, features));
+                }
+                
+                // Limit batch size to avoid timeout
+                if patterns.len() >= 10 {
+                    break;
+                }
+            }
+            
+            patterns
+        }
+        
+        /// Check if DID has a recent ML score (within last 100 blocks)
+        fn has_recent_ml_score(did: &H256) -> bool {
+            if let Some((_, timestamp)) = MLScores::<T>::get(did) {
+                let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
+                let age = now.saturating_sub(timestamp);
+                let max_age = 100 * 6; // ~10 minutes (assuming 6s blocks)
+                
+                return age < max_age;
+            }
+            false
+        }
+        
+        /// Call external ML service via HTTP
+        fn call_ml_service(features: &BehavioralFeatures) -> Result<u8, &'static str> {
+            // Get ML service URL from storage
+            let url_bytes = MLServiceUrl::<T>::get();
+            let url = sp_std::str::from_utf8(&url_bytes)
+                .map_err(|_| "Invalid ML service URL")?;
+            
+            log::debug!(" Calling ML service at: {}", url);
+            
+            // Build request payload
+            let payload = Self::build_ml_request_payload(features)?;
+            
+            // Create HTTP request
+            let request = http::Request::post(url, vec![payload]);
+            
+            // Set timeout (5 seconds)
+            let timeout = Duration::from_millis(5000);
+            let pending = request
+                .deadline(sp_io::offchain::timestamp().add(timeout))
+                .send()
+                .map_err(|_| "Failed to send HTTP request")?;
+            
+            // Wait for response
+            let response = pending
+                .try_wait(timeout)
+                .map_err(|_| "Request timeout")?
+                .map_err(|_| "Request failed")?;
+            
+            // Check status code
+            if response.code != 200 {
+                log::error!(" ML service returned status: {}", response.code);
+                return Err("ML service error");
+            }
+            
+            // Parse response
+            let body = response.body().collect::<Vec<u8>>();
+            Self::parse_ml_response(&body)
+        }
+        
+        /// Build JSON payload for ML service
+        fn build_ml_request_payload(features: &BehavioralFeatures) -> Result<u8, &'static str> {
+            // Encode features to JSON manually (no_std compatible)
+            let mut json = Vec::new();
+            
+            json.extend_from_slice(b"{");
+            json.extend_from_slice(b"\"did\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",");
+            json.extend_from_slice(b"\"features\":{");
+            
+            // typing_speed_wpm
+            json.extend_from_slice(b"\"typing_speed_wpm\":");
+            json.extend_from_slice(features.typing_speed_wpm.to_string().as_bytes());
+            json.extend_from_slice(b",");
+            
+            // avg_key_hold_time_ms
+            json.extend_from_slice(b"\"avg_key_hold_time_ms\":");
+            json.extend_from_slice(features.avg_key_hold_time_ms.to_string().as_bytes());
+            json.extend_from_slice(b",");
+            
+            // avg_transition_time_ms
+            json.extend_from_slice(b"\"avg_transition_time_ms\":");
+            json.extend_from_slice(features.avg_transition_time_ms.to_string().as_bytes());
+            json.extend_from_slice(b",");
+            
+            // error_rate_percent
+            json.extend_from_slice(b"\"error_rate_percent\":");
+            json.extend_from_slice(features.error_rate_percent.to_string().as_bytes());
+            json.extend_from_slice(b",");
+            
+            // activity_hour_preference
+            json.extend_from_slice(b"\"activity_hour_preference\":");
+            json.extend_from_slice(features.activity_hour_preference.to_string().as_bytes());
+            
+            json.extend_from_slice(b"}}");
+            
+            Ok(json[0]) // Return first byte as placeholder
+        }
+        
+        /// Parse ML service JSON response
+        fn parse_ml_response(body: &[u8]) -> Result<u8, &'static str> {
+            // Parse JSON response: {"confidence_score": 87, ...}
+            // Simple parser for no_std environment
+            
+            let body_str = sp_std::str::from_utf8(body)
+                .map_err(|_| "Invalid UTF-8 response")?;
+            
+            // Find "confidence_score": field
+            if let Some(start) = body_str.find("\"confidence_score\":") {
+                let score_str = &body_str[start + 19..]; // Skip key
+                
+                // Find the number
+                let score_str = score_str.trim_start();
+                let end = score_str.find(|c: char| !c.is_ascii_digit())
+                    .unwrap_or(score_str.len());
+                
+                let score_str = &score_str[..end];
+                
+                // Parse to u8
+                let score = score_str.parse::<u8>()
+                    .map_err(|_| "Invalid score format")?;
+                
+                if score > 100 {
+                    return Err("Score out of range");
+                }
+                
+                return Ok(score);
+            }
+            
+            Err("confidence_score not found in response")
+        }
+        
+        /// Get signer for submitting transactions
+        fn get_signer() -> Option<Signer<T, T::AuthorityId, ForAny>> {
+            Signer::<T, T::AuthorityId, ForAny>::any_account()
+        }
+        
+        /// Submit ML score via signed transaction
+        fn submit_ml_score_transaction(
+            signer: &Signer<T, T::AuthorityId, ForAny>,
+            did: H256,
+            score: u8,
+        ) -> Result<(), &'static str> {
+            // Submit signed transaction
+            let results = signer.send_signed_transaction(|_account| {
+                Call::store_ml_score { did, score }
+            });
+            
+            // Check if transaction was submitted
+            for (_, result) in &results {
+                if result.is_err() {
+                    return Err("Failed to submit transaction");
+                }
+            }
+            
+            if results.len() == 0 {
+                return Err("No account available for signing");
+            }
+            
+            Ok(())
+        }
+
         /// Update behavioral envelope with new sample (Welford's online algorithm)
         pub fn update_behavioral_envelope(
             did: &H256,

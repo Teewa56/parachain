@@ -1,6 +1,5 @@
 # Behavioral Biometrics ML Service
-
-Production-grade machine learning service for behavioral biometric authentication using PyTorch and FastAPI.
+Machine learning service for behavioral biometric authentication using PyTorch and FastAPI.
 
 ## Overview
 

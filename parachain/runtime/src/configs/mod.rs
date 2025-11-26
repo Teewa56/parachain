@@ -398,4 +398,5 @@ impl pallet_proof_of_personhood::Config for Runtime {
     type RecoveryDeposit = RecoveryDeposit;
 	type ZkCredentials = Runtime;
     type WeightInfo = pallet_proof_of_personhood::weights::SubstrateWeight<Runtime>;
+	type AuthorityId = pallet_proof_of_personhood::crypto::TestAuthId;
 }
