@@ -40,11 +40,11 @@ pub mod pallet {
         type WeightInfo: WeightInfo;
         type ParachainId: Get<cumulus_primitives_core::ParaId>; 
         type XcmOriginToTransactDispatchOrigin: EnsureOrigin<
-            T as frame_system::Config>::RuntimeOrigin,
+            Self::RuntimeOrigin,
             Success = Location
         >;
         type ParachainIdentity: frame_support::traits::EnsureOrigin<
-            <Self as frame_system::Config>::RuntimeOrigin, 
+            Self::RuntimeOrigin, 
             Success = Location
         >;
         #[pallet::constant]

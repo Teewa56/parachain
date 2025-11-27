@@ -7,7 +7,6 @@ use pallet_verifiable_credentials::CredentialType;
 mod benchmarking;
 
 pub mod weights;
-use crate::weights::WeightInfo;
 
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
@@ -22,6 +21,7 @@ pub mod pallet {
     use sp_std::vec::Vec;
     use sp_core::H256;
     use sp_runtime::traits::StaticLookup;
+    use crate::weights::WeightInfo;
 
     type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
@@ -68,6 +68,16 @@ pub mod pallet {
         Address,
         Custom,
         All, // Can issue any type
+    }
+    
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    pub enum CredentialType {
+        Education,
+        Health,
+        Employment,
+        Age,
+        Address,
+        Custom,
     }
 
     /// Proposal status

@@ -305,12 +305,6 @@ pub mod pallet {
         InvalidRevealIndex,       // fields_to_reveal contains an index >= fields.len()
     }
 
-    /// Maximum fields per credential schema
-    const MAX_SCHEMA_FIELDS: u32 = 100;
-
-    /// Maximum length of individual field name
-    const MAX_FIELD_NAME_LENGTH: u32 = 64;
-
     parameter_types! {
         pub const MaxCredentialCleanupPerBlock: u32 = 10;
     }
@@ -538,12 +532,18 @@ pub mod pallet {
         pub fn create_schema(
             origin: OriginFor<T>,
             credential_type: CredentialType,
-            fields: Vec<Vec<u8>>,          // Input is standard Vec
-            required_fields: Vec<bool>,    // Input is standard Vec
+            fields: Vec<Vec<u8>>,      
+            required_fields: Vec<bool>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             let (creator_did, _) = IdentityRegistryPallet::<T>::get_identity_by_account(&who)
                 .ok_or(Error::<T>::IssuerIdentityNotFound)?;
+
+            // Validate schema parameters early
+            ensure!(
+                Self::validate_schema_params(&fields, &required_fields),
+                Error::<T>::InvalidSchema
+            );
 
             // Convert `fields` (Vec<Vec<u8>>) -> BoundedVec<BoundedVec<u8, 64>, 100>
             let bounded_fields: BoundedVec<BoundedVec<u8, ConstU32<64>>, ConstU32<100>> = fields
@@ -902,6 +902,12 @@ pub mod pallet {
             fields: &[Vec<u8>],
             required_fields: &[bool],
         ) -> bool {
+            /// Maximum fields per credential schema
+            const MAX_SCHEMA_FIELDS: u32 = 100;
+
+            /// Maximum length of individual field name
+            const MAX_FIELD_NAME_LENGTH: u32 = 64;
+            
             if fields.len() != required_fields.len() {
                 return false;
             }
