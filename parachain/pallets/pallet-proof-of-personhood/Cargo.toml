@@ -19,7 +19,7 @@ frame-system = { workspace = true, default-features = false }
 frame-executive = { workspace = true, default-features = false }
 sp-std = { workspace = true }
 sp-core = { workspace = true, default-features = false }
-sp-io = { workspace = true }
+sp-io = { workspace = true, default-features = false, features = ["sp-trie"] }
 sp-runtime = { workspace = true }
 sp-trie = { version = "41.1.0", default-features = false }
 sp-state-machine = { version = "0.28.0", default-features = false }

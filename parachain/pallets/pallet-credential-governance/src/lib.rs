@@ -1,15 +1,11 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 pub use pallet::*;
-use pallet_verifiable_credentials::pallet::CredentialType;
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
 
 pub mod weights;
-
-#[cfg(feature = "std")]
-use serde::{Deserialize, Serialize};
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -22,6 +18,8 @@ pub mod pallet {
     use sp_core::H256;
     use sp_runtime::traits::StaticLookup;
     use crate::weights::WeightInfo;
+    use pallet_verifiable_credentials;
+    use pallet_verifiable_credentials::pallet::CredentialType;
 
     type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
@@ -29,27 +27,23 @@ pub mod pallet {
     pub struct Pallet<T>(_);
 
     #[pallet::config]
-    pub trait Config: frame_system::Config {
+    pub trait Config: frame_system::Config + pallet_verifiable_credentials::pallet::Config {
         type Currency: ReservableCurrency<Self::AccountId>;
         type TimeProvider: Time;
-        
         /// Minimum deposit to create a proposal
         #[pallet::constant]
         type ProposalDeposit: Get<BalanceOf<Self>>;
-        
         /// Voting period in blocks
         #[pallet::constant]
         type VotingPeriod: Get<BlockNumberFor<Self>>;
-        
         /// Minimum percentage of yes votes to pass (0-100)
         #[pallet::constant]
         type ApprovalThreshold: Get<u8>;
-
         type WeightInfo: WeightInfo;
     }
 
     /// Proposal types
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen, DecodeWithMemTracking)]
     pub enum ProposalType {
         AddTrustedIssuer,
         RemoveTrustedIssuer,
@@ -57,31 +51,8 @@ pub mod pallet {
         EmergencyRevoke,
     }
 
-    /// Credential type for issuer authorization
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen, DecodeWithMemTracking)]
-    #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-    pub enum CredentialTypeAuth {
-        Education,
-        Health,
-        Employment,
-        Age,
-        Address,
-        Custom,
-        All, // Can issue any type
-    }
-    
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen, DecodeWithMemTracking)]
-    pub enum CredentialType {
-        Education,
-        Health,
-        Employment,
-        Age,
-        Address,
-        Custom,
-    }
-
     /// Proposal status
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen, DecodeWithMemTracking)]
     pub enum ProposalStatus {
         Active,
         Approved,
@@ -97,8 +68,8 @@ pub mod pallet {
         pub proposer: T::AccountId,
         pub proposal_type: ProposalType,
         pub issuer_did: H256,
-        pub credential_types: BoundedVec<CredentialType, CostU32<10>>,
-        pub description: BoundedVec<u8, CostU32<1024>>,
+        pub credential_types: BoundedVec<CredentialType, ConstU32<10>>,
+        pub description: BoundedVec<u8, ConstU32<1024>>,
         pub deposit: BalanceOf<T>,
         pub created_at: BlockNumberFor<T>,
         pub voting_ends_at: BlockNumberFor<T>,
@@ -172,9 +143,9 @@ pub mod pallet {
     pub type TrustedIssuers<T: Config> = StorageDoubleMap<
         _,
         Blake2_128Concat,
-        H256, // issuer DID
+        H256,
         Blake2_128Concat,
-        CredentialTypeAuth,
+        CredentialType,
         bool,
         ValueQuery,
     >;
@@ -186,7 +157,7 @@ pub mod pallet {
         _,
         Blake2_128Concat,
         H256,
-        BoundedVec<u8, CostU32<4096>>, // JSON metadata
+        BoundedVec<u8, ConstU32<4096>>, // JSON metadata
         OptionQuery,
     >;
 
@@ -254,7 +225,7 @@ pub mod pallet {
         pub fn propose_add_issuer(
             origin: OriginFor<T>,
             issuer_did: H256,
-            credential_types: Vec<CredentialTypeAuth>,
+            credential_types: Vec<CredentialType>,
             description: Vec<u8>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
@@ -271,8 +242,8 @@ pub mod pallet {
                 proposer: who.clone(),
                 proposal_type: ProposalType::AddTrustedIssuer,
                 issuer_did,
-                credential_types,
-                description,
+                credential_types: credential_types.clone().try_into().map_err(|_| Error::<T>::InvalidProposal)?,
+                description: description.clone().try_into().map_err(|_| Error::<T>::InvalidProposal)?,
                 deposit: T::ProposalDeposit::get(),
                 created_at: current_block,
                 voting_ends_at,
@@ -503,7 +474,7 @@ pub mod pallet {
             match proposal.proposal_type {
                 ProposalType::AddTrustedIssuer => {
                     for cred_type in &proposal.credential_types {
-                        pallet_verifiable_credentials::Pallet::<T>::add_trusted_issuer_internal(
+                        pallet_verifiable_credentials::pallet::Pallet::<T>::add_trusted_issuer_internal(
                             proposal.issuer_did,
                             cred_type.clone(),
                         )?;
@@ -511,11 +482,11 @@ pub mod pallet {
 
                     Self::deposit_event(Event::TrustedIssuerAdded {
                         issuer_did: proposal.issuer_did,
-                        credential_types: proposal.credential_types.clone(),
+                        credential_types: proposal.credential_types.to_vec(),
                     });
                 }
                 ProposalType::RemoveTrustedIssuer => {
-                    pallet_verifiable_credentials::Pallet::<T>::remove_trusted_issuer_internal(
+                    pallet_verifiable_credentials::pallet::Pallet::<T>::remove_trusted_issuer_internal(
                         proposal.issuer_did
                     )?;
 
@@ -526,7 +497,7 @@ pub mod pallet {
                 ProposalType::UpdateIssuerPermissions => {
                     // Update existing issuer's credential types
                     for cred_type in &proposal.credential_types {
-                        pallet_verifiable_credentials::Pallet::<T>::add_trusted_issuer_internal(
+                        pallet_verifiable_credentials::pallet::Pallet::<T>::add_trusted_issuer_internal(
                             proposal.issuer_did,
                             cred_type.clone(),
                         )?;
@@ -534,12 +505,12 @@ pub mod pallet {
 
                     Self::deposit_event(Event::TrustedIssuerAdded {
                         issuer_did: proposal.issuer_did,
-                        credential_types: proposal.credential_types.clone(),
+                        credential_types: proposal.credential_types.to_vec(),
                     });
                 }
                 ProposalType::EmergencyRevoke => {
                     // Emergency revoke: immediately remove all permissions
-                    pallet_verifiable_credentials::Pallet::<T>::remove_trusted_issuer_internal(
+                    pallet_verifiable_credentials::pallet::Pallet::<T>::remove_trusted_issuer_internal(
                         proposal.issuer_did
                     )?;
 

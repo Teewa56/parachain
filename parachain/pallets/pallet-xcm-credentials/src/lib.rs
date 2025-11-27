@@ -443,7 +443,7 @@ pub mod pallet {
             let mut destination = Some(destination);
             let mut message = Some(message);
 
-            let ticket = T::XcmRouter::validate(&mut destination, &mut message)
+            let (ticket, _assets) = T::XcmRouter::validate(&mut destination, &mut message)
                 .map_err(|_| Error::<T>::XcmValidationFailed)?;
 
             T::XcmRouter::deliver(ticket)
@@ -481,7 +481,7 @@ pub mod pallet {
             let mut dest = Some(destination);
             let mut msg = Some(message);
             
-            let ticket = T::XcmRouter::validate(&mut dest, &mut msg)
+            let (ticket, _assets) = T::XcmRouter::validate(&mut dest, &mut msg)
                 .map_err(|_| Error::<T>::XcmValidationFailed)?;
 
             T::XcmRouter::deliver(ticket)

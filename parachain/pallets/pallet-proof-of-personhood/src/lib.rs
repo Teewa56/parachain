@@ -1,7 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-pub use pallet::*;
-
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
 
@@ -53,7 +51,6 @@ pub mod pallet {
     };
     use log;
     use frame_system::offchain::{
-        AppCrypto, 
         SendSignedTransaction, 
         Signer,
         ForAny
@@ -68,6 +65,10 @@ pub mod pallet {
     };
     use sp_io::crypto::sr25519_verify;
     use scale_info::prelude::format;
+    use signature::Verifier;
+    use frame_support::traits::Imbalance;
+    use frame_system::offchain::AppCrypto;
+    use frame_system::offchain::SigningTypes;
 
     type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
@@ -102,6 +103,7 @@ pub mod pallet {
         type Public: sp_runtime::traits::IdentifyAccount<AccountId = Self::AccountId>;
         type Signature: sp_runtime::traits::Verify<Signer = Self::Public>;
         type AuthorityId: AppCrypto<Self::Public, Self::Signature>;
+        type StrengthType: Get<u32> + PartialOrd;
     }
 
     /// Personhood proof structure
@@ -984,7 +986,10 @@ pub mod pallet {
     }
 
     #[pallet::hooks]
-    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T>
+    where 
+        T: SigningTypes, 
+    {
         fn offchain_worker(block_number: BlockNumberFor<T>) {
             // Run ML inference every 10 blocks
             if (block_number % 10u32.into()).is_zero() {
@@ -998,7 +1003,7 @@ pub mod pallet {
     }
 
     #[pallet::call]
-    impl<T: Config> Pallet<T> {
+    impl<T: Config> Pallet<T>{
         /// Register personhood with biometric nullifier
         #[pallet::call_index(0)]
         #[pallet::weight(<T as Config>::WeightInfo::register_personhood())]
@@ -1500,7 +1505,7 @@ pub mod pallet {
                     score_increase = (confidence as u32 * 30) / 100;
                     
                     // High confidence (>80%) reduces delay by 60 days
-                    if confidence > 80u8{
+                    if confidence > 80 as T::StrengthType {
                         recovery.finalization_delay = recovery.finalization_delay
                             .saturating_sub(60 * 24 * 60 * 60)
                             .max(MIN_RECOVERY_DELAY);
@@ -1516,7 +1521,7 @@ pub mod pallet {
                     score_increase = (strength as u32 * 20) / 100;
                     
                     // Strong proof (>90%) reduces delay by 45 days
-                    if strength > 90u8 {
+                    if strength > 90 as T::StrengthType {
                         recovery.finalization_delay = recovery.finalization_delay
                             .saturating_sub(45 * 24 * 60 * 60)
                             .max(MIN_RECOVERY_DELAY);
@@ -1662,7 +1667,8 @@ pub mod pallet {
             // Calculate reward (50% of slashed amount)
             let divisor: BalanceOf<T> = 2u32.into();
             let slashed_amount = slashed.0;
-            let reward = slashed_amount / divisor;
+            let slashed_balance = slashed_amount.peek();
+            let reward = slashed_balance / divisor;
             
             T::Currency::deposit_creating(&challenger, reward);
             
@@ -1680,7 +1686,7 @@ pub mod pallet {
             Self::deposit_event(Event::GuardianSlashed {
                 did,
                 guardian: fraudulent_guardian,
-                amount: slashed_amount,
+                amount: slashed_balance,
             });
             
             Ok(())
@@ -2166,10 +2172,10 @@ pub mod pallet {
 
             // Generate challenge ID
             let challenge_id: H256 = sp_io::hashing::blake2_256(&[
-                target_did.encode().as_slice(),
+                target_did.as_bytes(),
                 &challenger.encode(),
                 &now.to_le_bytes(),
-            ]).into();
+            ].concat()).into();
             
             let evidence_bounded: BoundedVec<u8, ConstU32<2048>> = evidence
                 .try_into()
@@ -2328,59 +2334,7 @@ pub mod pallet {
         }
     }
 
-    impl<T: Config + frame_system::offchain::SigningTypes> Pallet<T> {
-        /// Punish oracles with outlier scores
-        fn punish_outlier_oracles(did: &H256, median: u8, tolerance: u8) {
-            for (oracle_id, _oracle) in MLOracles::<T>::iter() {
-                if let Some((score, _)) = OracleResponses::<T>::get(did, oracle_id) {
-                    let deviation = if score > median {
-                        score - median
-                    } else {
-                        median - score
-                    };
-                    
-                    if deviation > tolerance {
-                        // Punish this oracle
-                        Self::update_oracle_reputation(oracle_id, false);
-                        
-                        log::warn!(
-                            "Oracle {} submitted outlier score: {} (median: {})",
-                            oracle_id,
-                            score,
-                            median
-                        );
-                    }
-                }
-            }
-        }
-
-        /// Update oracle reputation
-        fn update_oracle_reputation(oracle_id: u8, matched_consensus: bool) {
-            MLOracles::<T>::mutate(oracle_id, |oracle_opt| {
-                if let Some(oracle) = oracle_opt {
-                    if matched_consensus {
-                        oracle.consensus_matches = oracle.consensus_matches.saturating_add(1);
-                        // Increase reputation (max 100)
-                        oracle.reputation = oracle.reputation.saturating_add(1).min(100);
-                    } else {
-                        // Decrease reputation significantly for outliers
-                        oracle.reputation = oracle.reputation.saturating_sub(5);
-                        
-                        // Deactivate if reputation drops below 50
-                        if oracle.reputation < 50 {
-                            oracle.active = false;
-                            log::error!("Oracle {} deactivated due to low reputation", oracle_id);
-                        }
-                    }
-                    
-                    Self::deposit_event(Event::OracleReputationUpdated {
-                        oracle_id,
-                        new_reputation: oracle.reputation,
-                    });
-                }
-            });
-        }
-
+    impl<T: Config + SigningTypes> Pallet<T> {
         /// Main off-chain worker function
         fn run_ml_inference(block_number: BlockNumberFor<T>) -> Result<(), &'static str> {
             // Check if we have signing keys
@@ -2460,6 +2414,245 @@ pub mod pallet {
             }
         }
 
+        /// Punish oracles that provided fraudulent scores
+        fn punish_oracles_for_fraud(did: &H256, fraudulent_score: u8) {
+            // Check which oracles submitted scores close to the fraudulent one
+            for (oracle_id, _oracle) in MLOracles::<T>::iter() {
+                if let Some((score, _)) = OracleResponses::<T>::get(did, oracle_id) {
+                    // If oracle's score was within 10 points of fraudulent score
+                    let diff = if score > fraudulent_score {
+                        score - fraudulent_score
+                    } else {
+                        fraudulent_score - score
+                    };
+                    
+                    if diff <= 10 {
+                        // Severely punish this oracle
+                        MLOracles::<T>::mutate(oracle_id, |oracle_opt| {
+                            if let Some(o) = oracle_opt {
+                                o.reputation = o.reputation.saturating_sub(20);
+                                
+                                if o.reputation < 30 {
+                                    o.active = false;
+                                    log::error!(
+                                        "Oracle {} deactivated for fraud (reputation: {})",
+                                        oracle_id,
+                                        o.reputation
+                                    );
+                                }
+                            }
+                        });
+                    }
+                }
+            }
+        }
+
+        /// Verify behavioral pattern with feature analysis
+        pub fn verify_behavioral_pattern(
+            did: &H256,
+            pattern_data: &[u8],
+        ) -> Result<u8, Error<T>> {
+            // Decode features
+            let features = BehavioralFeatures::decode(&mut &pattern_data[..])
+                .map_err(|_| Error::<T>::InvalidFeatureData)?;
+            
+            // Validate features
+            ensure!(features.typing_speed_wpm > 0, Error::<T>::InvalidFeatureData);
+            ensure!(features.error_rate_percent <= 100, Error::<T>::InvalidFeatureData);
+            ensure!(features.activity_hour_preference < 24, Error::<T>::InvalidFeatureData);
+            
+            // Get stored samples and envelope
+            let samples = BehavioralPatternSamples::<T>::get(did);
+            let envelope = BehavioralEnvelopes::<T>::get(did);
+            
+            if samples.is_empty() {
+                // No baseline - store this as first sample
+                Self::store_behavioral_sample(did, &features)?;
+                return Ok(0); // Return 0 confidence (no baseline to compare)
+            }
+            
+            // STEP 1: Quick rejection - check if within statistical envelope
+            if let Some(env) = &envelope {
+                let (within_bounds, violations) = Self::is_within_envelope(&features, env);
+                if !within_bounds && violations.len() > 2 {
+                    // Multiple feature violations = likely not the same person
+                    Self::deposit_event(Event::PatternRejected {
+                        did: *did,
+                        violations: violations.clone(),
+                    });
+                    return Ok(0);
+                }
+            }
+            
+            // STEP 2: Calculate weighted distance to each stored sample
+            let weights = FeatureWeights::default();
+            let mut min_distance = u32::MAX;
+            let mut best_match_age = 0u64;
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
+            
+            for stored_pattern in samples.iter() {
+                let distance = Self::calculate_weighted_distance(
+                    &features,
+                    &stored_pattern.features,
+                    &weights,
+                );
+                
+                if distance < min_distance {
+                    min_distance = distance;
+                    best_match_age = now.saturating_sub(stored_pattern.recorded_at);
+                }
+            }
+            
+            // STEP 3: Calculate base confidence score
+            let base_confidence = Self::calculate_match_confidence(
+                min_distance,
+                envelope.as_ref().unwrap(),
+                samples.len() as u32,
+            );
+            
+            // STEP 4: Apply temporal decay (patterns older than 90 days lose confidence)
+            let ninety_days = 90 * 24 * 60 * 60u64;
+            let decay_factor = if best_match_age < ninety_days {
+                100u32
+            } else {
+                let excess_age = best_match_age.saturating_sub(ninety_days);
+                let decay = (excess_age * 50) / (365 * 24 * 60 * 60); // 50% decay over a year
+                100u32.saturating_sub(decay as u32)
+            };
+            
+            let final_confidence = ((base_confidence as u32 * decay_factor) / 100) as u8;
+            
+            // STEP 5: Detect drift (for adaptive learning)
+            let drift = Self::detect_pattern_drift(did, &features, &samples[..]);
+            match drift {
+                DriftAnalysis::SuddenChange { distance, confidence } => {
+                    // Log potential takeover attempt
+                    Self::deposit_event(Event::AnomalousPatternDetected {
+                        did: *did,
+                        distance,
+                        confidence,
+                    });
+                    // Don't update envelope for sudden changes
+                },
+                DriftAnalysis::GradualDrift { accept_update, .. } => {
+                    if accept_update && final_confidence > 70 {
+                        // Natural evolution - update envelope and store sample
+                        let _ = Self::update_behavioral_envelope(did, &features);
+                        let _ = Self::store_behavioral_sample(did, &features);
+                    }
+                },
+                DriftAnalysis::NormalVariation { .. } => {
+                    // Normal variation - store sample if confidence is high
+                    if final_confidence > 80 {
+                        let _ = Self::store_behavioral_sample(did, &features);
+                    }
+                },
+                DriftAnalysis::InsufficientData => {
+                    // Not enough historical data yet
+                    let _ = Self::store_behavioral_sample(did, &features);
+                }
+            }
+            
+            Ok(final_confidence)
+        }
+        
+        /// Verify historical access proof with real cryptographic signatures
+        fn verify_historical_proof(
+            did: &H256,
+            proof_data: &[u8],
+        ) -> Result<u8, Error<T>> {
+            // Proof format: [count: 1][signatures: Vec<HistoricalSignature>]
+            if proof_data.is_empty() {
+                return Ok(0);
+            }
+            
+            let signature_count = proof_data[0] as usize;
+            if signature_count == 0 {
+                return Ok(0);
+            }
+            
+            // Each signature: 8 (timestamp) + 64 (signature) + 32 (pubkey) + 32 (msg_hash) = 136 bytes
+            let required_len = 1 + (signature_count * 136);
+            if proof_data.len() < required_len {
+                return Err(Error::<T>::InvalidHistoricalProof);
+            }
+            
+            // Get stored historical keys for this DID
+            let historical_keys = HistoricalKeys::<T>::get(did);
+            if historical_keys.is_empty() {
+                return Ok(0);
+            }
+            
+            let mut verified_count = 0u32;
+            let mut oldest_verified_timestamp = 0u64;
+            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
+            
+            for i in 0..signature_count {
+                let offset = 1 + (i * 136);
+                
+                let timestamp = u64::from_le_bytes(
+                    proof_data[offset..offset + 8].try_into()
+                        .map_err(|_| Error::<T>::InvalidHistoricalProof)?
+                );
+                
+                let signature_bytes = &proof_data[offset + 8..offset + 72];
+                let public_key_bytes = &proof_data[offset + 72..offset + 104];
+                let message_hash_bytes = &proof_data[offset + 104..offset + 136];
+                
+                // Signature must be from the past
+                if timestamp >= now {
+                    continue;
+                }
+                
+                // Verify public key exists in historical keys
+                let key_valid = historical_keys.iter().any(|(key, registered_at)| {
+                    key == public_key_bytes && *registered_at <= timestamp
+                });
+                
+                if !key_valid {
+                    continue;
+                }
+                
+                // Parse cryptographic types
+                let public_key = match sr25519::Public::try_from(public_key_bytes) {
+                    Ok(pk) => pk,
+                    Err(_) => continue,
+                };
+                
+                let signature = match sr25519::Signature::try_from(signature_bytes) {
+                    Ok(sig) => sig,
+                    Err(_) => continue,
+                };
+                
+                let message_hash: [u8; 32] = match message_hash_bytes.try_into() {
+                    Ok(hash) => hash,
+                    Err(_) => continue,
+                };
+                
+                // Verify signature
+                if sr25519_verify(&signature, &message_hash, &public_key) {
+                    verified_count += 1;
+                    
+                    let age = now.saturating_sub(timestamp);
+                    if age > oldest_verified_timestamp {
+                        oldest_verified_timestamp = age;
+                    }
+                }
+            }
+            
+            // Calculate confidence score
+            // Component 1: Number of verified signatures (max 50 points)
+            let signature_score = (verified_count * 10).min(50);
+            
+            // Component 2: Age of oldest signature (max 50 points)
+            let one_year = 365 * 24 * 60 * 60u64;
+            let age_score = ((oldest_verified_timestamp as u128 * 50) / one_year as u128)
+                .min(50) as u32;
+            
+            let total_score = (signature_score + age_score).min(100);
+            Ok(total_score as u8)
+        }   
+        
         /// Submit oracle response transaction
         fn submit_oracle_response_transaction(
             signer: &Signer<T, T::AuthorityId, ForAny>,
@@ -2485,6 +2678,40 @@ pub mod pallet {
             }
             
             Ok(())
+        }
+
+        /// Get signer for submitting transactions
+        fn get_signer() -> Signer<T, T::AuthorityId, ForAny> {
+            Signer::<T, T::AuthorityId, ForAny>::any_account()
+        }
+    }
+
+    impl<T: Config> Pallet<T> {
+        /// Update oracle reputation
+        fn update_oracle_reputation(oracle_id: u8, matched_consensus: bool) {
+            MLOracles::<T>::mutate(oracle_id, |oracle_opt| {
+                if let Some(oracle) = oracle_opt {
+                    if matched_consensus {
+                        oracle.consensus_matches = oracle.consensus_matches.saturating_add(1);
+                        // Increase reputation (max 100)
+                        oracle.reputation = oracle.reputation.saturating_add(1).min(100);
+                    } else {
+                        // Decrease reputation significantly for outliers
+                        oracle.reputation = oracle.reputation.saturating_sub(5);
+                        
+                        // Deactivate if reputation drops below 50
+                        if oracle.reputation < 50 {
+                            oracle.active = false;
+                            log::error!("Oracle {} deactivated due to low reputation", oracle_id);
+                        }
+                    }
+                    
+                    Self::deposit_event(Event::OracleReputationUpdated {
+                        oracle_id,
+                        new_reputation: oracle.reputation,
+                    });
+                }
+            });
         }
 
         /// Get pending patterns that need ML scoring
@@ -2540,7 +2767,7 @@ pub mod pallet {
             let payload = Self::build_ml_request_payload(features)?;
             
             let url_str = core::str::from_utf8(&url).map_err(|_| "Invalid URL")?;
-            let body: Vec<u8> = payload.clone(); 
+             
             let request = http::Request::post(url_str, vec![payload]);
             
             let timeout = Duration::from_millis(5000);
@@ -2550,7 +2777,7 @@ pub mod pallet {
                 .map_err(|_| "Failed to send HTTP request")?;
             
             let response = pending
-                .try_wait(timeout)
+                .try_wait(sp_io::offchain::timestamp().add(timeout))
                 .map_err(|_| "Request timeout")?
                 .map_err(|_| "Request failed")?;
             
@@ -2561,7 +2788,7 @@ pub mod pallet {
             
             let body = response.body().collect::<Vec<u8>>();
             
-            let mut signed_response = Self::parse_signed_ml_response(&body)?;
+            let signed_response = Self::parse_signed_ml_response(&body)?;
             
             // Verify signature matches oracle's public key
             if signed_response.service_public_key != oracle.public_key {
@@ -3192,11 +3419,6 @@ pub mod pallet {
             num_str.parse::<u64>()
                 .map_err(|_| "Invalid number format")
         }
-        
-        /// Get signer for submitting transactions
-        fn get_signer() -> Signer<T, T::AuthorityId, ForAny> {
-            Signer::<T, T::AuthorityId, ForAny>::any_account()
-        }
 
         /// Update behavioral envelope with new sample (Welford's online algorithm)
         pub fn update_behavioral_envelope(
@@ -3691,8 +3913,7 @@ pub mod pallet {
             let storage_key = Self::storage_key_for_nullifier(nullifier);
             
             // 4. Generate trie proof: This creates a minimal proof that this key exists in the state trie
-            let backend = <dyn sp_state_machine::Backend::<Blake2Hasher>>::as_trie_backend()
-                .ok_or(Error::<T>::InvalidUniquenessProof)?;
+            let backend = sp_io::storage::as_trie_backend().ok_or(Error::<T>::InvalidUniquenessProof)?;
             
             let proof = generate_trie_proof::<LayoutV1<Blake2Hasher>, _, _, _>(
                 backend,
@@ -3729,39 +3950,6 @@ pub mod pallet {
             }
         }
 
-        /// Punish oracles that provided fraudulent scores
-        fn punish_oracles_for_fraud(did: &H256, fraudulent_score: u8) {
-            // Check which oracles submitted scores close to the fraudulent one
-            for (oracle_id, _oracle) in MLOracles::<T>::iter() {
-                if let Some((score, _)) = OracleResponses::<T>::get(did, oracle_id) {
-                    // If oracle's score was within 10 points of fraudulent score
-                    let diff = if score > fraudulent_score {
-                        score - fraudulent_score
-                    } else {
-                        fraudulent_score - score
-                    };
-                    
-                    if diff <= 10 {
-                        // Severely punish this oracle
-                        MLOracles::<T>::mutate(oracle_id, |oracle_opt| {
-                            if let Some(o) = oracle_opt {
-                                o.reputation = o.reputation.saturating_sub(20);
-                                
-                                if o.reputation < 30 {
-                                    o.active = false;
-                                    log::error!(
-                                        "Oracle {} deactivated for fraud (reputation: {})",
-                                        oracle_id,
-                                        o.reputation
-                                    );
-                                }
-                            }
-                        });
-                    }
-                }
-            }
-        }
-      
         /// Generate storage key for a nullifier
         fn storage_key_for_nullifier(nullifier: &H256) -> Vec<u8> {
             use sp_io::hashing::twox_128;
@@ -3816,115 +4004,6 @@ pub mod pallet {
             }
         }
 
-        /// Verify behavioral pattern with feature analysis
-        pub fn verify_behavioral_pattern(
-            did: &H256,
-            pattern_data: &[u8],
-        ) -> Result<u8, Error<T>> {
-            // Decode features
-            let features = BehavioralFeatures::decode(&mut &pattern_data[..])
-                .map_err(|_| Error::<T>::InvalidFeatureData)?;
-            
-            // Validate features
-            ensure!(features.typing_speed_wpm > 0, Error::<T>::InvalidFeatureData);
-            ensure!(features.error_rate_percent <= 100, Error::<T>::InvalidFeatureData);
-            ensure!(features.activity_hour_preference < 24, Error::<T>::InvalidFeatureData);
-            
-            // Get stored samples and envelope
-            let samples = BehavioralPatternSamples::<T>::get(did);
-            let envelope = BehavioralEnvelopes::<T>::get(did);
-            
-            if samples.is_empty() {
-                // No baseline - store this as first sample
-                Self::store_behavioral_sample(did, &features)?;
-                return Ok(0); // Return 0 confidence (no baseline to compare)
-            }
-            
-            // STEP 1: Quick rejection - check if within statistical envelope
-            if let Some(env) = &envelope {
-                let (within_bounds, violations) = Self::is_within_envelope(&features, env);
-                if !within_bounds && violations.len() > 2 {
-                    // Multiple feature violations = likely not the same person
-                    Self::deposit_event(Event::PatternRejected {
-                        did: *did,
-                        violations: violations.clone(),
-                    });
-                    return Ok(0);
-                }
-            }
-            
-            // STEP 2: Calculate weighted distance to each stored sample
-            let weights = FeatureWeights::default();
-            let mut min_distance = u32::MAX;
-            let mut best_match_age = 0u64;
-            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
-            
-            for stored_pattern in samples.iter() {
-                let distance = Self::calculate_weighted_distance(
-                    &features,
-                    &stored_pattern.features,
-                    &weights,
-                );
-                
-                if distance < min_distance {
-                    min_distance = distance;
-                    best_match_age = now.saturating_sub(stored_pattern.recorded_at);
-                }
-            }
-            
-            // STEP 3: Calculate base confidence score
-            let base_confidence = Self::calculate_match_confidence(
-                min_distance,
-                envelope.as_ref().unwrap(),
-                samples.len() as u32,
-            );
-            
-            // STEP 4: Apply temporal decay (patterns older than 90 days lose confidence)
-            let ninety_days = 90 * 24 * 60 * 60u64;
-            let decay_factor = if best_match_age < ninety_days {
-                100u32
-            } else {
-                let excess_age = best_match_age.saturating_sub(ninety_days);
-                let decay = (excess_age * 50) / (365 * 24 * 60 * 60); // 50% decay over a year
-                100u32.saturating_sub(decay as u32)
-            };
-            
-            let final_confidence = ((base_confidence as u32 * decay_factor) / 100) as u8;
-            
-            // STEP 5: Detect drift (for adaptive learning)
-            let drift = Self::detect_pattern_drift(did, &features, &samples[..]);
-            match drift {
-                DriftAnalysis::SuddenChange { distance, confidence } => {
-                    // Log potential takeover attempt
-                    Self::deposit_event(Event::AnomalousPatternDetected {
-                        did: *did,
-                        distance,
-                        confidence,
-                    });
-                    // Don't update envelope for sudden changes
-                },
-                DriftAnalysis::GradualDrift { accept_update, .. } => {
-                    if accept_update && final_confidence > 70 {
-                        // Natural evolution - update envelope and store sample
-                        let _ = Self::update_behavioral_envelope(did, &features);
-                        let _ = Self::store_behavioral_sample(did, &features);
-                    }
-                },
-                DriftAnalysis::NormalVariation { .. } => {
-                    // Normal variation - store sample if confidence is high
-                    if final_confidence > 80 {
-                        let _ = Self::store_behavioral_sample(did, &features);
-                    }
-                },
-                DriftAnalysis::InsufficientData => {
-                    // Not enough historical data yet
-                    let _ = Self::store_behavioral_sample(did, &features);
-                }
-            }
-            
-            Ok(final_confidence)
-        }
-
         /// Store a new behavioral sample (maintains rolling window of 10)
         fn store_behavioral_sample(
             did: &H256,
@@ -3969,106 +4048,32 @@ pub mod pallet {
             
             ((matching_bits * 100) / 256) as u8
         }
-        
-        /// Verify historical access proof with real cryptographic signatures
-        fn verify_historical_proof(
-            did: &H256,
-            proof_data: &[u8],
-        ) -> Result<u8, Error<T>> {
-            // Proof format: [count: 1][signatures: Vec<HistoricalSignature>]
-            if proof_data.is_empty() {
-                return Ok(0);
-            }
-            
-            let signature_count = proof_data[0] as usize;
-            if signature_count == 0 {
-                return Ok(0);
-            }
-            
-            // Each signature: 8 (timestamp) + 64 (signature) + 32 (pubkey) + 32 (msg_hash) = 136 bytes
-            let required_len = 1 + (signature_count * 136);
-            if proof_data.len() < required_len {
-                return Err(Error::<T>::InvalidHistoricalProof);
-            }
-            
-            // Get stored historical keys for this DID
-            let historical_keys = HistoricalKeys::<T>::get(did);
-            if historical_keys.is_empty() {
-                return Ok(0);
-            }
-            
-            let mut verified_count = 0u32;
-            let mut oldest_verified_timestamp = 0u64;
-            let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
-            
-            for i in 0..signature_count {
-                let offset = 1 + (i * 136);
-                
-                let timestamp = u64::from_le_bytes(
-                    proof_data[offset..offset + 8].try_into()
-                        .map_err(|_| Error::<T>::InvalidHistoricalProof)?
-                );
-                
-                let signature_bytes = &proof_data[offset + 8..offset + 72];
-                let public_key_bytes = &proof_data[offset + 72..offset + 104];
-                let message_hash_bytes = &proof_data[offset + 104..offset + 136];
-                
-                // Signature must be from the past
-                if timestamp >= now {
-                    continue;
-                }
-                
-                // Verify public key exists in historical keys
-                let key_valid = historical_keys.iter().any(|(key, registered_at)| {
-                    key == public_key_bytes && *registered_at <= timestamp
-                });
-                
-                if !key_valid {
-                    continue;
-                }
-                
-                // Parse cryptographic types
-                let public_key = match sr25519::Public::try_from(public_key_bytes) {
-                    Ok(pk) => pk,
-                    Err(_) => continue,
-                };
-                
-                let signature = match sr25519::Signature::try_from(signature_bytes) {
-                    Ok(sig) => sig,
-                    Err(_) => continue,
-                };
-                
-                let message_hash: [u8; 32] = match message_hash_bytes.try_into() {
-                    Ok(hash) => hash,
-                    Err(_) => continue,
-                };
-                
-                // Verify signature
-                if sr25519_verify(&signature, &message_hash, &public_key) {
-                    verified_count += 1;
+
+        /// Punish oracles with outlier scores
+        fn punish_outlier_oracles(did: &H256, median: u8, tolerance: u8) {
+            for (oracle_id, _oracle) in MLOracles::<T>::iter() {
+                if let Some((score, _)) = OracleResponses::<T>::get(did, oracle_id) {
+                    let deviation = if score > median {
+                        score - median
+                    } else {
+                        median - score
+                    };
                     
-                    let age = now.saturating_sub(timestamp);
-                    if age > oldest_verified_timestamp {
-                        oldest_verified_timestamp = age;
+                    if deviation > tolerance {
+                        // Punish this oracle
+                        Self::update_oracle_reputation(oracle_id, false);
+                        
+                        log::warn!(
+                            "Oracle {} submitted outlier score: {} (median: {})",
+                            oracle_id,
+                            score,
+                            median
+                        );
                     }
                 }
             }
-            
-            // Calculate confidence score
-            // Component 1: Number of verified signatures (max 50 points)
-            let signature_score = (verified_count * 10).min(50);
-            
-            // Component 2: Age of oldest signature (max 50 points)
-            let one_year = 365 * 24 * 60 * 60u64;
-            let age_score = ((oldest_verified_timestamp as u128 * 50) / one_year as u128)
-                .min(50) as u32;
-            
-            let total_score = (signature_score + age_score).min(100);
-            Ok(total_score as u8)
-        }        
-    }
+        }
 
-    impl<T: Config> Pallet<T> {
         fn validate_nullifier(nullifier: &H256) -> bool {
             *nullifier != H256::zero()
         }
@@ -4347,11 +4352,11 @@ pub mod pallet {
                         score: final_score,
                     });
                     
-                    // Rate limit - don't update if too frequent
+                    // Rate limit
                     return Err(Error::<T>::RegistrationTooSoon);
                 },
             }
-            let _ = Self::update_score_statistics(did, final_score, now)?;
+            let _ = Self::update_score_statistics(did, final_score, now).map_err(|_| Error::<T>::InvalidFeatureData)?;
             Self::update_global_distribution(final_score);
             Ok(())
         }
