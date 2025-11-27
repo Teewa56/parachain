@@ -19,12 +19,11 @@ pub mod pallet {
         Instruction,
         Location,
         Junction,
-        Junctions,
         Xcm,
         OriginKind,
         SendXcm,
+        Weight,
     };
-    use pallet_xcm::Pallet as XcmPallet;
     use frame_support::BoundedVec;
     use crate::weights::WeightInfo;
     use sp_runtime::traits::SaturatedConversion;
@@ -40,11 +39,11 @@ pub mod pallet {
         type WeightInfo: WeightInfo;
         type ParachainId: Get<cumulus_primitives_core::ParaId>; 
         type XcmOriginToTransactDispatchOrigin: EnsureOrigin<
-            Self::RuntimeOrigin,
+            <Self as frame_system::Config>::RuntimeOrigin,
             Success = Location
         >;
         type ParachainIdentity: frame_support::traits::EnsureOrigin<
-            Self::RuntimeOrigin, 
+            <Self as frame_system::Config>::RuntimeOrigin, 
             Success = Location
         >;
         #[pallet::constant]
@@ -200,27 +199,18 @@ pub mod pallet {
 
     #[pallet::error]
     pub enum Error<T> {
-        /// Parachain not registered
         ParachainNotRegistered,
-        /// Parachain already registered
         ParachainAlreadyRegistered,
-        /// Parachain not trusted
         ParachainNotTrusted,
-        /// Invalid XCM message
         InvalidXcmMessage,
-        /// XCM send failed
-        XcmSendFailed,
-        /// Request not found
         RequestNotFound,
-        /// Credential not found
         CredentialNotFound,
-        /// Credential not exported
         CredentialNotExported,
-        /// Already exported
         AlreadyExported,
-        /// Too many verification responses
         TooManyResponses,
         EncodingError,
+        XcmDeliveryFailed,
+        XcmValidationFailed,
     }
 
     #[pallet::call]
@@ -352,7 +342,7 @@ pub mod pallet {
             ensure!(actual_para_id == source_para_id, Error::<T>::InvalidXcmMessage);
 
             // Verify source parachain is trusted
-            let registry = RegisteredParachains::<T>::get(source_para_id)
+            let _registry = RegisteredParachains::<T>::get(source_para_id)
                 .ok_or(Error::<T>::ParachainNotRegistered)?;
 
             let credential_bv: BoundedVec<u8, ConstU32<4096>> = credential_data.try_into().map_err(|_| Error::<T>::InvalidXcmMessage)?;
@@ -442,12 +432,22 @@ pub mod pallet {
             let message = Xcm(vec![
                 Instruction::Transact {
                     origin_kind: OriginKind::Native,
+                    fallback_max_weight: Some(xcm::v5::Weight::from_parts(
+                        T::DefaultXcmFee::get().ref_time(),
+                        T::DefaultXcmFee::get().proof_size()
+                    )),
                     call: double,
                 }
             ]);
 
-            T::XcmRouter::deliver(destination, message)
-                .map_err(|_| Error::<T>::XcmSendFailed)?;
+            let mut destination = Some(destination);
+            let mut message = Some(message);
+
+            let ticket = T::XcmRouter::validate(&mut destination, &mut message)
+                .map_err(|_| Error::<T>::XcmValidationFailed)?;
+
+            T::XcmRouter::deliver(ticket)
+                .map_err(|_| Error::<T>::XcmDeliveryFailed)?;
 
             Ok(())
         }
@@ -470,18 +470,22 @@ pub mod pallet {
             let message = Xcm(vec![
                 Instruction::Transact {
                     origin_kind: OriginKind::Native,
-                    fallback_max_weight: {
-                        let fee = T::DefaultXcmFee::get();
-                        Some(xcm::v3::Weight::from_parts(fee.ref_time(), fee.proof_size()))
-                    },
+                    fallback_max_weight: Some(xcm::v5::Weight::from_parts(
+                        T::DefaultXcmFee::get().ref_time(),
+                        T::DefaultXcmFee::get().proof_size()
+                    )),
                     call: double,
                 }
             ]);
 
-            <T::XcmRouter as SendXcm>::deliver(
-                destination,
-                message
-            ).map_err(|_| Error::<T>::XcmSendFailed)?;
+            let mut dest = Some(destination);
+            let mut msg = Some(message);
+            
+            let ticket = T::XcmRouter::validate(&mut dest, &mut msg)
+                .map_err(|_| Error::<T>::XcmValidationFailed)?;
+
+            T::XcmRouter::deliver(ticket)
+                .map_err(|_| Error::<T>::XcmDeliveryFailed)?;
             
             Ok(())
         }
@@ -526,10 +530,8 @@ pub mod pallet {
             let location = T::ParachainIdentity::ensure_origin(origin)
                 .map_err(|_| Error::<T>::InvalidXcmMessage)?;
 
-            // Match XCM v4/v5 pattern:
             match location {
                 Location { parents: 1, interior } => {
-                    // Check if interior is X1 with Parachain junction
                     if let Some(junction) = interior.first() {
                         if let Junction::Parachain(id) = junction {
                             return Ok(*id);
@@ -550,7 +552,6 @@ pub mod pallet {
                 return false;
             }
 
-            // FIX: Add timestamp validation (responses not older than 1 hour)
             let current_time: u64 = <T as Config>::TimeProvider::now().saturated_into::<u64>().saturated_into();
             let one_hour_secs = 3600u64;
 

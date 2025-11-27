@@ -1,7 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 pub use pallet::*;
-use pallet_verifiable_credentials::CredentialType;
+use pallet_verifiable_credentials::pallet::CredentialType;
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
@@ -58,7 +58,7 @@ pub mod pallet {
     }
 
     /// Credential type for issuer authorization
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen, DecodeWithMemTracking)]
     #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
     pub enum CredentialTypeAuth {
         Education,
@@ -70,7 +70,7 @@ pub mod pallet {
         All, // Can issue any type
     }
     
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen, DecodeWithMemTracking)]
     pub enum CredentialType {
         Education,
         Health,
@@ -91,14 +91,14 @@ pub mod pallet {
     }
 
     /// A governance proposal
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen, DecodeWithMemTracking)]
     #[scale_info(skip_type_params(T))]
     pub struct Proposal<T: Config> {
         pub proposer: T::AccountId,
         pub proposal_type: ProposalType,
         pub issuer_did: H256,
-        pub credential_types: Vec<CredentialType>,
-        pub description: Vec<u8>,
+        pub credential_types: BoundedVec<CredentialType, CostU32<10>>,
+        pub description: BoundedVec<u8, CostU32<1024>>,
         pub deposit: BalanceOf<T>,
         pub created_at: BlockNumberFor<T>,
         pub voting_ends_at: BlockNumberFor<T>,
@@ -109,7 +109,7 @@ pub mod pallet {
     }
 
     /// Vote on a proposal
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen, DecodeWithMemTracking)]
     pub enum Vote {
         Yes,
         No,
@@ -117,7 +117,7 @@ pub mod pallet {
     }
 
     /// Voter information
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     #[scale_info(skip_type_params(T))]
     pub struct VoterInfo<T: Config> {
         pub account: T::AccountId,
@@ -186,7 +186,7 @@ pub mod pallet {
         _,
         Blake2_128Concat,
         H256,
-        Vec<u8>, // JSON metadata
+        BoundedVec<u8, CostU32<4096>>, // JSON metadata
         OptionQuery,
     >;
 
@@ -401,7 +401,7 @@ pub mod pallet {
                 Self::deposit_event(Event::ProposalRejected { proposal_id });
 
                 // Slash 50% of deposit on rejection (anti-spam)
-                let (slashed, _remaining) = T::Currency::slash_reserved(&proposal.proposer, proposal.deposit);
+                let (_slashed, _remaining) = T::Currency::slash_reserved(&proposal.proposer, proposal.deposit);
             }
 
             Proposals::<T>::insert(proposal_id, proposal);
@@ -557,7 +557,7 @@ pub mod pallet {
             issuer_did: &H256,
             credential_type: &CredentialType,
         ) -> bool {
-            TrustedIssuers::<T>::get((credential_type, issuer_did))
+            TrustedIssuers::<T>::get(issuer_did, credential_type)
         }
 
         /// Get total council voting power
@@ -572,7 +572,7 @@ pub mod pallet {
             issuer_did: H256,
             credential_type: CredentialType,
         ) -> DispatchResult {
-            TrustedIssuers::<T>::insert((&credential_type, &issuer_did), true);
+            TrustedIssuers::<T>::insert(issuer_did, credential_type, true);
             Ok(())
         }
 
@@ -589,7 +589,7 @@ pub mod pallet {
             ];
             
             for cred_type in credential_types {
-                TrustedIssuers::<T>::remove((&cred_type, &issuer_did));
+                TrustedIssuers::<T>::remove(issuer_did, cred_type);
             }
             Ok(())
         }

@@ -13,6 +13,7 @@ pub mod pallet {
         BoundedVec,
     };
     use frame_system::pallet_prelude::*;
+    use sp_std::vec;
     use sp_std::vec::Vec;
     use sp_std::convert::TryInto;
     use sp_core::{ H256, Get };
@@ -23,9 +24,7 @@ pub mod pallet {
     use sp_std::marker::PhantomData;
     use codec::DecodeWithMemTracking;
     use frame_support::parameter_types;
-    
-    #[cfg(feature = "std")]
-    use serde::{Deserialize, Serialize};
+    use serde;
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
@@ -60,7 +59,7 @@ pub mod pallet {
 
     /// Credential types
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen, DecodeWithMemTracking)]
-    #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+    #[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
     pub enum CredentialType {
         Education,
         Health,

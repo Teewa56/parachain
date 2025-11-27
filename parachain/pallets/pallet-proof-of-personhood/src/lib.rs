@@ -31,6 +31,7 @@ pub mod crypto {
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
+    use sp_std::vec;
     use sp_runtime::traits::Saturating;
     use pallet_identity_registry::pallet::Identities;
     use frame_support::{
@@ -59,15 +60,14 @@ pub mod pallet {
     };
     use core;
     use p256::ecdsa::{
+        VerifyingKey as P256VerifyingKey,
         Signature as P256Signature,
-        signature::Verifier as P256Verifier,
     };
     use p384::ecdsa::{
-        VerifyingKey as P384VerifyingKey,
         Signature as P384Signature,
-        signature::Verifier as P384Verifier,
     };
     use sp_io::crypto::sr25519_verify;
+    use scale_info::prelude::format;
 
     type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
@@ -719,7 +719,7 @@ pub mod pallet {
     }
 
     /// Anomaly detection result
-    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen, DecodeWithMemTracking)]
     pub enum AnomalyType {
         Normal,
         SuddenSpike { deviation: u8 },
@@ -1500,7 +1500,7 @@ pub mod pallet {
                     score_increase = (confidence as u32 * 30) / 100;
                     
                     // High confidence (>80%) reduces delay by 60 days
-                    if confidence > 80 {
+                    if confidence > 80u8{
                         recovery.finalization_delay = recovery.finalization_delay
                             .saturating_sub(60 * 24 * 60 * 60)
                             .max(MIN_RECOVERY_DELAY);
@@ -1516,7 +1516,7 @@ pub mod pallet {
                     score_increase = (strength as u32 * 20) / 100;
                     
                     // Strong proof (>90%) reduces delay by 45 days
-                    if strength > 90 {
+                    if strength > 90u8 {
                         recovery.finalization_delay = recovery.finalization_delay
                             .saturating_sub(45 * 24 * 60 * 60)
                             .max(MIN_RECOVERY_DELAY);
@@ -1661,7 +1661,8 @@ pub mod pallet {
                         
             // Calculate reward (50% of slashed amount)
             let divisor: BalanceOf<T> = 2u32.into();
-            let reward = slashed.0.saturating_div(divisor);
+            let slashed_amount = slashed.0;
+            let reward = slashed_amount / divisor;
             
             T::Currency::deposit_creating(&challenger, reward);
             
@@ -1679,7 +1680,7 @@ pub mod pallet {
             Self::deposit_event(Event::GuardianSlashed {
                 did,
                 guardian: fraudulent_guardian,
-                amount: slashed.0,
+                amount: slashed_amount,
             });
             
             Ok(())
@@ -1805,7 +1806,7 @@ pub mod pallet {
             origin: OriginFor<T>,
             did: H256,
             new_nullifier: H256,
-            new_commitment: H256,
+            _new_commitment: H256,
             new_modality: BiometricModality,
             cross_biometric_proof: CrossBiometricProof,
         ) -> DispatchResult {
@@ -2162,10 +2163,10 @@ pub mod pallet {
                 .map_err(|_| Error::<T>::InsufficientChallengeBond)?;
             
             let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
-            
+
             // Generate challenge ID
             let challenge_id: H256 = sp_io::hashing::blake2_256(&[
-                &target_did.encode()[..],
+                target_did.encode().as_slice(),
                 &challenger.encode(),
                 &now.to_le_bytes(),
             ]).into();
@@ -2327,154 +2328,10 @@ pub mod pallet {
         }
     }
 
-    impl<T: Config> Pallet<T> {
-        /// Check if consensus reached and finalize ML score
-        fn check_and_finalize_consensus(did: &H256, now: u64) -> Result<(), Error<T>> {
-            let threshold = ConsensusThreshold::<T>::get();
-            let variance_tolerance = ScoreVarianceTolerance::<T>::get();
-            
-            // Collect all responses for this DID
-            let mut responses: Vec<(u8, u8, u64)> = Vec::new(); // (oracle_id, score, timestamp)
-            
-            for (oracle_id, oracle) in MLOracles::<T>::iter() {
-                if let Some((score, timestamp)) = OracleResponses::<T>::get(did, oracle_id) {
-                    // Only include active oracles
-                    if oracle.active {
-                        responses.push((oracle_id, score, timestamp));
-                    }
-                }
-            }
-            
-            // Need at least threshold responses
-            if responses.len() < threshold as usize {
-                return Err(Error::<T>::InsufficientOracleResponses);
-            }
-            
-            // Calculate median score (more robust than mean)
-            let mut scores: Vec<u8> = responses.iter().map(|(_, score, _)| *score).collect();
-            scores.sort_unstable();
-            let median_score = scores[scores.len() / 2];
-            
-            // Check variance (all scores must be within tolerance of median)
-            let max_deviation = scores.iter()
-                .map(|s| {
-                    if *s > median_score {
-                        s - median_score
-                    } else {
-                        median_score - s
-                    }
-                })
-                .max()
-                .unwrap_or(0);
-            
-            if max_deviation > variance_tolerance {
-                Self::deposit_event(Event::ConsensusFailed {
-                    did: *did,
-                    reason: b"Score variance too high".to_vec(),
-                });
-                
-                // Punish outlier oracles
-                Self::punish_outlier_oracles(did, median_score, variance_tolerance);
-                
-                return Err(Error::<T>::OracleScoreVarianceTooHigh);
-            }
-            
-            // Calculate weighted average (weight by oracle reputation)
-            let mut weighted_sum = 0u32;
-            let mut weight_total = 0u32;
-            let mut participating_oracles = Vec::new();
-            
-            for (oracle_id, score, _) in responses.iter() {
-                if let Some(oracle) = MLOracles::<T>::get(oracle_id) {
-                    let weight = oracle.reputation as u32;
-                    weighted_sum += (*score as u32) * weight;
-                    weight_total += weight;
-                    participating_oracles.push(*oracle_id);
-                    
-                    // Reward oracle for participating in consensus
-                    Self::update_oracle_reputation(*oracle_id, true);
-                }
-            }
-            
-            let final_score = if weight_total > 0 {
-                (weighted_sum / weight_total) as u8
-            } else {
-                median_score
-            };
-
-            // Detect anomalies
-            let anomaly = Self::detect_score_anomaly(did, final_score, now);
-
-            match anomaly {
-                AnomalyType::Normal => {
-                    // Store final ML score
-                    MLScores::<T>::insert(did, (final_score, now));
-                    
-                    // Remove from pending queue
-                    PendingMLPatterns::<T>::remove(did);
-                    
-                    // Clean up oracle responses
-                    for oracle_id in participating_oracles.iter() {
-                        OracleResponses::<T>::remove(did, oracle_id);
-                    }
-                    
-                    Self::deposit_event(Event::ConsensusReached {
-                        did: *did,
-                        final_score,
-                        participating_oracles,
-                    });
-                },
-                AnomalyType::SuddenSpike { deviation } | 
-                AnomalyType::SuddenDrop { deviation } => {
-                    if deviation > 30 {
-                        // Extreme anomaly - flag for review
-                        Self::deposit_event(Event::AnomalyDetected {
-                            did: *did,
-                            anomaly_type: anomaly.clone(),
-                            score: final_score,
-                        });
-                        
-                        // Don't store the score yet - require manual review
-                        return Err(Error::<T>::InvalidFeatureData);
-                    } else {
-                        // Moderate anomaly - log but allow
-                        Self::deposit_event(Event::AnomalyDetected {
-                            did: *did,
-                            anomaly_type: anomaly,
-                            score: final_score,
-                        });
-                    }
-                },
-                AnomalyType::ImpossibleValue { reason } => {
-                    // Reject impossible scores
-                    Self::deposit_event(Event::AnomalyDetected {
-                        did: *did,
-                        anomaly_type: anomaly,
-                        score: final_score,
-                    });
-                    
-                    log::error!("Impossible ML score detected: {:?}", reason);
-                    return Err(Error::<T>::InvalidFeatureData);
-                },
-                AnomalyType::FrequencyAnomaly => {
-                    Self::deposit_event(Event::AnomalyDetected {
-                        did: *did,
-                        anomaly_type: anomaly,
-                        score: final_score,
-                    });
-                    
-                    // Rate limit - don't update if too frequent
-                    return Err(Error::<T>::RegistrationTooSoon);
-                },
-            }
-            let _ = Self::update_score_statistics(did, final_score, now)?;
-            Self::update_global_distribution(final_score);
-            Ok(())
-        }
-
+    impl<T: Config + frame_system::offchain::SigningTypes> Pallet<T> {
         /// Punish oracles with outlier scores
         fn punish_outlier_oracles(did: &H256, median: u8, tolerance: u8) {
-            for (oracle_id, oracle) in MLOracles::<T>::iter() {
+            for (oracle_id, _oracle) in MLOracles::<T>::iter() {
                 if let Some((score, _)) = OracleResponses::<T>::get(did, oracle_id) {
                     let deviation = if score > median {
                         score - median
@@ -2683,6 +2540,7 @@ pub mod pallet {
             let payload = Self::build_ml_request_payload(features)?;
             
             let url_str = core::str::from_utf8(&url).map_err(|_| "Invalid URL")?;
+            let body: Vec<u8> = payload.clone(); 
             let request = http::Request::post(url_str, vec![payload]);
             
             let timeout = Duration::from_millis(5000);
@@ -2696,7 +2554,7 @@ pub mod pallet {
                 .map_err(|_| "Request timeout")?
                 .map_err(|_| "Request failed")?;
             
-            if response.code != 200u16 {
+            if response.code as u16 != 200u16 {
                 log::error!("Oracle {} returned status: {}", oracle_id, response.code);
                 return Err("Oracle error");
             }
@@ -2977,12 +2835,13 @@ pub mod pallet {
             uncompressed[0] = 0x04; // Uncompressed point
             // amd_pubkey stored as [u8; 64] in storage
             // store as [u8; 96] for P-384
-            
+            uncompressed[1..49].copy_from_slice(&amd_pubkey[0..48]); // X
+            uncompressed[49..97].copy_from_slice(&amd_pubkey[48..96]); // Y
             // SHA-384 hash of report body
-            let report_hash = sp_io::hashing::sha2_256(report_body); // Use sha2_384 in production
+            let _report_hash = sp_io::hashing::sha2_256(report_body); // Use sha2_384 in production
             
             // Parse P-384 signature
-            let sig = P384Signature::from_slice(raw_sig)
+            let _sig = P384Signature::from_slice(raw_sig)
                 .map_err(|_| "Invalid P-384 signature format")?;
             
             // For now, simplified check
@@ -3053,7 +2912,7 @@ pub mod pallet {
         }
         
         /// Build JSON payload for ML service
-        fn build_ml_request_payload(features: &BehavioralFeatures) -> Result<u8, &'static str> {
+        fn build_ml_request_payload(features: &BehavioralFeatures) -> Result<Vec<u8>, &'static str> {
             // Encode features to JSON manually (no_std compatible)
             let mut json = Vec::new();
             
@@ -3087,7 +2946,7 @@ pub mod pallet {
             
             json.extend_from_slice(b"}}");
             
-            Ok(json[0]) // Return first byte as placeholder
+            Ok(json)
         }
         
         /// Parse signed ML service JSON response
@@ -3193,7 +3052,7 @@ pub mod pallet {
                     
                     if score_diff > 40 {
                         return AnomalyType::ImpossibleValue {
-                            reason: b"Score changed >40 points".to_vec(),
+                            reason: b"Score changed >40 points".to_vec().try_into().unwrap_or_default(),
                         };
                     }
                     
@@ -3222,7 +3081,7 @@ pub mod pallet {
             // Flag scores in extreme percentiles (< 1% or > 99%)
             if percentile < 1 || percentile > 99 {
                 return AnomalyType::ImpossibleValue {
-                    reason: format!("Score in {}th percentile", percentile).into_bytes(),
+                    reason: format!("Score in {}th percentile", percentile).into_bytes().try_into().unwrap_or_default(),
                 };
             }
             
@@ -3338,33 +3197,6 @@ pub mod pallet {
         fn get_signer() -> Signer<T, T::AuthorityId, ForAny> {
             Signer::<T, T::AuthorityId, ForAny>::any_account()
         }
-           
-        /// Submit ML score via signed transaction
-        fn submit_ml_score_transaction(
-            signer: &Signer<T, T::AuthorityId, ForAny>,
-            response: SignedMLResponse,
-        ) -> Result<(), &'static str> {
-            let did = response.did;
-            let score = response.confidence_score;
-            let nonce = response.nonce;
-            
-            // Submit signed transaction
-            let results = signer.send_signed_transaction(|_account| {
-                Call::store_ml_score_with_nonce { did, score, nonce }
-            });
-            
-            for (_, result) in &results {
-                if result.is_err() {
-                    return Err("Failed to submit transaction");
-                }
-            }
-            
-            if results.is_empty() {
-                return Err("No account available for signing");
-            }
-            
-            Ok(())
-        }
 
         /// Update behavioral envelope with new sample (Welford's online algorithm)
         pub fn update_behavioral_envelope(
@@ -3408,15 +3240,14 @@ pub mod pallet {
                         
                         // Update variance incrementally
                         if n > 1 {
-                            let delta = new_features.typing_speed_wpm as i64 - old_mean_typing as i64;
-                            let delta2 = new_features.typing_speed_wpm as i64 - envelope.mean_typing_speed as i64;
+                            let _delta = new_features.typing_speed_wpm as i64 - old_mean_typing as i64;
+                            let _delta2 = new_features.typing_speed_wpm as i64 - envelope.mean_typing_speed as i64;
                             
                             // M2 = M2 + delta * delta2
                             // variance = M2 / (n - 1)
                             // std_dev = sqrt(variance)
                             // For fixed-point: store std_dev * 100
                             
-                            // Simplified: recalculate from samples
                             envelope.std_dev_typing_speed = Self::calculate_std_dev_from_samples(
                                 did, 
                                 envelope.mean_typing_speed,
@@ -3517,7 +3348,7 @@ pub mod pallet {
         
         /// Detect gradual drift vs sudden takeover
         pub fn detect_pattern_drift(
-            did: &H256,
+            _did: &H256,
             new_features: &BehavioralFeatures,
             historical_samples: &[StoredBehavioralPattern],
         ) -> DriftAnalysis {
@@ -3710,7 +3541,7 @@ pub mod pallet {
         /// Calculate match confidence (0-100)
         pub fn calculate_match_confidence(
             distance: u32,
-            envelope: &BehavioralEnvelope,
+            _envelope: &BehavioralEnvelope,
             samples_available: u32,
         ) -> u8 {
             // Convert distance to similarity (inverse relationship)
@@ -3770,56 +3601,6 @@ pub mod pallet {
             BiometricBindings::<T>::get(nullifier)
         }
         
-        /// Verify cross-biometric ZK proof
-        fn verify_cross_biometric_proof(
-            existing_nullifier: &H256,
-            new_nullifier: &H256,
-            proof: &CrossBiometricProof,
-        ) -> Result<(), Error<T>> {
-            ensure!(
-                proof.nullifier_a == *existing_nullifier && proof.nullifier_b == *new_nullifier,
-                Error::<T>::InvalidCrossBiometricProof
-            );
-            
-            let bounded_proof: BoundedVec<u8, ConstU32<8192>> = proof.zk_binding_proof.clone();
-            
-            let mut public_inputs = Vec::new();
-            public_inputs.push(
-                existing_nullifier.as_bytes().to_vec()
-                    .try_into()
-                    .map_err(|_| Error::<T>::InvalidCrossBiometricProof)?
-            );
-            public_inputs.push(
-                new_nullifier.as_bytes().to_vec()
-                    .try_into()
-                    .map_err(|_| Error::<T>::InvalidCrossBiometricProof)?
-            );
-            public_inputs.push(
-                proof.session_id.as_bytes().to_vec()
-                    .try_into()
-                    .map_err(|_| Error::<T>::InvalidCrossBiometricProof)?
-            );
-            
-            let bounded_inputs: BoundedVec<BoundedVec<u8, ConstU32<64>>, ConstU32<16>> = 
-                public_inputs
-                    .try_into()
-                    .map_err(|_| Error::<T>::InvalidCrossBiometricProof)?;
-            
-            let zk_proof = pallet_zk_credentials::ZkProof {
-                proof_type: pallet_zk_credentials::ProofType::CrossBiometric,
-                proof_data: bounded_proof,
-                public_inputs: bounded_inputs,
-                credential_hash: *existing_nullifier,
-                created_at: proof.captured_at,
-                nonce: *new_nullifier,
-            };
-            
-            pallet_zk_credentials::Pallet::<T::ZkCredentials>::verify_proof_internal(&zk_proof)
-                .map_err(|_| Error::<T>::InvalidCrossBiometricProof)?;
-            
-            Ok(())
-        }
-        
         /// SECURITY CHECK: Verify credential issuance doesn't create duplicate personhoods
         pub fn verify_single_personhood_for_credential(
             _issuer_did: &H256,
@@ -3834,39 +3615,6 @@ pub mod pallet {
                     Error::<T>::NullifierAlreadyBound
                 );
             }
-            Ok(())
-        }
-
-        /// Verify uniqueness proof
-        fn verify_uniqueness_proof(
-            nullifier: &H256,
-            commitment: &H256,
-            proof_bytes: &[u8],
-        ) -> Result<(), Error<T>> {
-            ensure!(proof_bytes.len() >= 64, Error::<T>::InvalidUniquenessProof);
-            
-            let salt = &proof_bytes[0..32];
-            
-            let mut preimage = Vec::new();
-            preimage.extend_from_slice(nullifier.as_bytes());
-            preimage.extend_from_slice(salt);
-            let computed_commitment = sp_io::hashing::blake2_256(&preimage);
-            
-            ensure!(
-                computed_commitment == commitment.as_bytes(),
-                Error::<T>::InvalidCommitment
-            );
-            
-            ensure!(
-                !PersonhoodRegistry::<T>::contains_key(nullifier),
-                Error::<T>::NullifierAlreadyUsed
-            );
-
-            if proof_bytes.len() > 32 {
-                let zk_proof_data = &proof_bytes[32..];
-                Self::verify_biometric_zk_proof(nullifier, commitment, zk_proof_data)?;
-            }
-
             Ok(())
         }
 
@@ -3984,7 +3732,7 @@ pub mod pallet {
         /// Punish oracles that provided fraudulent scores
         fn punish_oracles_for_fraud(did: &H256, fraudulent_score: u8) {
             // Check which oracles submitted scores close to the fraudulent one
-            for (oracle_id, oracle) in MLOracles::<T>::iter() {
+            for (oracle_id, _oracle) in MLOracles::<T>::iter() {
                 if let Some((score, _)) = OracleResponses::<T>::get(did, oracle_id) {
                     // If oracle's score was within 10 points of fraudulent score
                     let diff = if score > fraudulent_score {
@@ -4034,58 +3782,6 @@ pub mod pallet {
             key
         }
 
-        fn verify_recovery_proof(
-            old_did: &H256,
-            new_nullifier: &H256,
-            proof_bytes: &[u8],
-        ) -> Result<(), Error<T>> {
-            ensure!(
-                !proof_bytes.is_empty() && proof_bytes.len() <= 4096,
-                Error::<T>::InvalidRecoveryProof
-            );
-
-            let old_nullifier = DidToNullifier::<T>::get(old_did)
-                .ok_or(Error::<T>::DidNotFound)?;
-
-            if proof_bytes.len() > 64 {
-                let bounded_proof: BoundedVec<u8, ConstU32<8192>> = proof_bytes
-                    .to_vec()
-                    .try_into()
-                    .map_err(|_| Error::<T>::InvalidRecoveryProof)?;
-                
-                let mut public_inputs = Vec::new();
-                public_inputs.push(
-                    old_nullifier.as_bytes().to_vec()
-                        .try_into()
-                        .map_err(|_| Error::<T>::InvalidRecoveryProof)?
-                );
-                public_inputs.push(
-                    new_nullifier.as_bytes().to_vec()
-                        .try_into()
-                        .map_err(|_| Error::<T>::InvalidRecoveryProof)?
-                );
-                
-                let bounded_inputs: BoundedVec<BoundedVec<u8, ConstU32<64>>, ConstU32<16>> = 
-                    public_inputs
-                        .try_into()
-                        .map_err(|_| Error::<T>::InvalidRecoveryProof)?;
-                
-                let zk_proof = pallet_zk_credentials::ZkProof {
-                    proof_type: pallet_zk_credentials::ProofType::Personhood,
-                    proof_data: bounded_proof,
-                    public_inputs: bounded_inputs,
-                    credential_hash: *old_did,
-                    created_at: <T as Config>::TimeProvider::now().saturated_into::<u64>(),
-                    nonce: *new_nullifier,
-                };
-                
-                pallet_zk_credentials::Pallet::<T::ZkCredentials>::verify_proof_internal(&zk_proof)
-                    .map_err(|_| Error::<T>::InvalidRecoveryProof)?;
-            }
-
-            Ok(())
-        }
-
         /// Batch verify multiple existence proofs (for cross-chain efficiency)
         pub fn batch_verify_existence_proofs(
             nullifiers: Vec<H256>,
@@ -4120,52 +3816,6 @@ pub mod pallet {
             }
         }
 
-        fn calculate_recovery_score(
-            recovery: &ProgressiveRecoveryRequest<T>,
-            now: u64,
-        ) -> u32 {
-            let mut score: u32 = 0;
-            
-            let guardian_score: u32 = recovery.guardian_votes.iter()
-                .map(|(guardian, vote_strength)| {
-                    GuardianRelationships::<T>::get(&recovery.did, guardian)
-                        .map(|rel| {
-                            let base = (*vote_strength as u32) * (rel.relationship_strength as u32);
-                            let age_bonus = if now.saturating_sub(rel.established_at) > (365 * 24 * 60 * 60) {
-                                2
-                            } else {
-                                0
-                            };
-                            base + age_bonus
-                        })
-                        .unwrap_or(0)
-                })
-                .sum();
-            score = score.saturating_add(guardian_score.min(30));
-            
-            let behavioral_score = (recovery.behavioral_confidence as u32 * 30) / 100;
-            score = score.saturating_add(behavioral_score);
-            
-            let historical_score = (recovery.historical_proof_strength as u32 * 20) / 100;
-            score = score.saturating_add(historical_score);
-            
-            let stake_score = {
-                let stake_u128 = recovery.economic_stake.saturated_into::<u128>();
-                ((stake_u128 / 1000) as u32).min(20)
-            };
-            score = score.saturating_add(stake_score);
-            
-            let elapsed = now.saturating_sub(recovery.requested_at);
-            let time_score = if elapsed >= recovery.finalization_delay {
-                30
-            } else {
-                ((elapsed as u128 * 30) / recovery.finalization_delay as u128) as u32
-            };
-            score = score.saturating_add(time_score);
-            
-            score
-        }
-        
         /// Verify behavioral pattern with feature analysis
         pub fn verify_behavioral_pattern(
             did: &H256,
@@ -4415,8 +4065,297 @@ pub mod pallet {
             
             let total_score = (signature_score + age_score).min(100);
             Ok(total_score as u8)
+        }        
+    }
+
+    impl<T: Config> Pallet<T> {
+        fn validate_nullifier(nullifier: &H256) -> bool {
+            *nullifier != H256::zero()
         }
-        
+
+        fn validate_commitment(commitment: &H256) -> bool {
+            *commitment != H256::zero()
+        }
+
+        /// Verify uniqueness proof
+        fn verify_uniqueness_proof(
+            nullifier: &H256,
+            commitment: &H256,
+            proof_bytes: &[u8],
+        ) -> Result<(), Error<T>> {
+            ensure!(proof_bytes.len() >= 64, Error::<T>::InvalidUniquenessProof);
+            
+            let salt = &proof_bytes[0..32];
+            
+            let mut preimage = Vec::new();
+            preimage.extend_from_slice(nullifier.as_bytes());
+            preimage.extend_from_slice(salt);
+            let computed_commitment = sp_io::hashing::blake2_256(&preimage);
+            
+            ensure!(
+                computed_commitment == commitment.as_bytes(),
+                Error::<T>::InvalidCommitment
+            );
+            
+            ensure!(
+                !PersonhoodRegistry::<T>::contains_key(nullifier),
+                Error::<T>::NullifierAlreadyUsed
+            );
+
+            if proof_bytes.len() > 32 {
+                let zk_proof_data = &proof_bytes[32..];
+                Self::verify_biometric_zk_proof(nullifier, commitment, zk_proof_data)?;
+            }
+
+            Ok(())
+        }
+
+        fn verify_recovery_proof(
+            old_did: &H256,
+            new_nullifier: &H256,
+            proof_bytes: &[u8],
+        ) -> Result<(), Error<T>> {
+            ensure!(
+                !proof_bytes.is_empty() && proof_bytes.len() <= 4096,
+                Error::<T>::InvalidRecoveryProof
+            );
+
+            let old_nullifier = DidToNullifier::<T>::get(old_did)
+                .ok_or(Error::<T>::DidNotFound)?;
+
+            if proof_bytes.len() > 64 {
+                let bounded_proof: BoundedVec<u8, ConstU32<8192>> = proof_bytes
+                    .to_vec()
+                    .try_into()
+                    .map_err(|_| Error::<T>::InvalidRecoveryProof)?;
+                
+                let mut public_inputs = Vec::new();
+                public_inputs.push(
+                    old_nullifier.as_bytes().to_vec()
+                        .try_into()
+                        .map_err(|_| Error::<T>::InvalidRecoveryProof)?
+                );
+                public_inputs.push(
+                    new_nullifier.as_bytes().to_vec()
+                        .try_into()
+                        .map_err(|_| Error::<T>::InvalidRecoveryProof)?
+                );
+                
+                let bounded_inputs: BoundedVec<BoundedVec<u8, ConstU32<64>>, ConstU32<16>> = 
+                    public_inputs
+                        .try_into()
+                        .map_err(|_| Error::<T>::InvalidRecoveryProof)?;
+                
+                let zk_proof = pallet_zk_credentials::ZkProof {
+                    proof_type: pallet_zk_credentials::ProofType::Personhood,
+                    proof_data: bounded_proof,
+                    public_inputs: bounded_inputs,
+                    credential_hash: *old_did,
+                    created_at: <T as Config>::TimeProvider::now().saturated_into::<u64>(),
+                    nonce: *new_nullifier,
+                };
+                
+                pallet_zk_credentials::Pallet::<T::ZkCredentials>::verify_proof_internal(&zk_proof)
+                    .map_err(|_| Error::<T>::InvalidRecoveryProof)?;
+            }
+
+            Ok(())
+        }
+
+        /// Verify cross-biometric ZK proof
+        fn verify_cross_biometric_proof(
+            existing_nullifier: &H256,
+            new_nullifier: &H256,
+            proof: &CrossBiometricProof,
+        ) -> Result<(), Error<T>> {
+            ensure!(
+                proof.nullifier_a == *existing_nullifier && proof.nullifier_b == *new_nullifier,
+                Error::<T>::InvalidCrossBiometricProof
+            );
+            
+            let bounded_proof: BoundedVec<u8, ConstU32<8192>> = proof.zk_binding_proof.clone();
+            
+            let mut public_inputs = Vec::new();
+            public_inputs.push(
+                existing_nullifier.as_bytes().to_vec()
+                    .try_into()
+                    .map_err(|_| Error::<T>::InvalidCrossBiometricProof)?
+            );
+            public_inputs.push(
+                new_nullifier.as_bytes().to_vec()
+                    .try_into()
+                    .map_err(|_| Error::<T>::InvalidCrossBiometricProof)?
+            );
+            public_inputs.push(
+                proof.session_id.as_bytes().to_vec()
+                    .try_into()
+                    .map_err(|_| Error::<T>::InvalidCrossBiometricProof)?
+            );
+            
+            let bounded_inputs: BoundedVec<BoundedVec<u8, ConstU32<64>>, ConstU32<16>> = 
+                public_inputs
+                    .try_into()
+                    .map_err(|_| Error::<T>::InvalidCrossBiometricProof)?;
+            
+            let zk_proof = pallet_zk_credentials::ZkProof {
+                proof_type: pallet_zk_credentials::ProofType::CrossBiometric,
+                proof_data: bounded_proof,
+                public_inputs: bounded_inputs,
+                credential_hash: *existing_nullifier,
+                created_at: proof.captured_at,
+                nonce: *new_nullifier,
+            };
+            
+            pallet_zk_credentials::Pallet::<T::ZkCredentials>::verify_proof_internal(&zk_proof)
+                .map_err(|_| Error::<T>::InvalidCrossBiometricProof)?;
+            
+            Ok(())
+        }
+
+        /// Check if consensus reached and finalize ML score
+        fn check_and_finalize_consensus(did: &H256, now: u64) -> Result<(), Error<T>> {
+            let threshold = ConsensusThreshold::<T>::get();
+            let variance_tolerance = ScoreVarianceTolerance::<T>::get();
+            
+            // Collect all responses for this DID
+            let mut responses: Vec<(u8, u8, u64)> = Vec::new(); // (oracle_id, score, timestamp)
+            
+            for (oracle_id, oracle) in MLOracles::<T>::iter() {
+                if let Some((score, timestamp)) = OracleResponses::<T>::get(did, oracle_id) {
+                    // Only include active oracles
+                    if oracle.active {
+                        responses.push((oracle_id, score, timestamp));
+                    }
+                }
+            }
+            
+            // Need at least threshold responses
+            if responses.len() < threshold as usize {
+                return Err(Error::<T>::InsufficientOracleResponses);
+            }
+            
+            // Calculate median score (more robust than mean)
+            let mut scores: Vec<u8> = responses.iter().map(|(_, score, _)| *score).collect();
+            scores.sort_unstable();
+            let median_score = scores[scores.len() / 2];
+            
+            // Check variance (all scores must be within tolerance of median)
+            let max_deviation = scores.iter()
+                .map(|s| {
+                    if *s > median_score {
+                        s - median_score
+                    } else {
+                        median_score - s
+                    }
+                })
+                .max()
+                .unwrap_or(0);
+            
+            if max_deviation > variance_tolerance {
+                Self::deposit_event(Event::ConsensusFailed {
+                    did: *did,
+                    reason: b"Score variance too high".to_vec(),
+                });
+                
+                // Punish outlier oracles
+                Self::punish_outlier_oracles(did, median_score, variance_tolerance);
+                
+                return Err(Error::<T>::OracleScoreVarianceTooHigh);
+            }
+            
+            // Calculate weighted average (weight by oracle reputation)
+            let mut weighted_sum = 0u32;
+            let mut weight_total = 0u32;
+            let mut participating_oracles = Vec::new();
+            
+            for (oracle_id, score, _) in responses.iter() {
+                if let Some(oracle) = MLOracles::<T>::get(oracle_id) {
+                    let weight = oracle.reputation as u32;
+                    weighted_sum += (*score as u32) * weight;
+                    weight_total += weight;
+                    participating_oracles.push(*oracle_id);
+                    
+                    // Reward oracle for participating in consensus
+                    Self::update_oracle_reputation(*oracle_id, true);
+                }
+            }
+            
+            let final_score = if weight_total > 0 {
+                (weighted_sum / weight_total) as u8
+            } else {
+                median_score
+            };
+
+            // Detect anomalies
+            let anomaly = Self::detect_score_anomaly(did, final_score, now);
+
+            match anomaly {
+                AnomalyType::Normal => {
+                    // Store final ML score
+                    MLScores::<T>::insert(did, (final_score, now));
+                    
+                    // Remove from pending queue
+                    PendingMLPatterns::<T>::remove(did);
+                    
+                    // Clean up oracle responses
+                    for oracle_id in participating_oracles.iter() {
+                        OracleResponses::<T>::remove(did, oracle_id);
+                    }
+                    
+                    Self::deposit_event(Event::ConsensusReached {
+                        did: *did,
+                        final_score,
+                        participating_oracles,
+                    });
+                },
+                AnomalyType::SuddenSpike { deviation } | 
+                AnomalyType::SuddenDrop { deviation } => {
+                    if deviation > 30 {
+                        // Extreme anomaly - flag for review
+                        Self::deposit_event(Event::AnomalyDetected {
+                            did: *did,
+                            anomaly_type: anomaly.clone(),
+                            score: final_score,
+                        });
+                        
+                        // Don't store the score yet - require manual review
+                        return Err(Error::<T>::InvalidFeatureData);
+                    } else {
+                        // Moderate anomaly - log but allow
+                        Self::deposit_event(Event::AnomalyDetected {
+                            did: *did,
+                            anomaly_type: anomaly,
+                            score: final_score,
+                        });
+                    }
+                },
+                AnomalyType::ImpossibleValue { reason } => {
+                    // Reject impossible scores
+                    Self::deposit_event(Event::AnomalyDetected {
+                        did: *did,
+                        anomaly_type: anomaly,
+                        score: final_score,
+                    });
+                    
+                    log::error!("Impossible ML score detected: {:?}", reason);
+                    return Err(Error::<T>::InvalidFeatureData);
+                },
+                AnomalyType::FrequencyAnomaly => {
+                    Self::deposit_event(Event::AnomalyDetected {
+                        did: *did,
+                        anomaly_type: anomaly,
+                        score: final_score,
+                    });
+                    
+                    // Rate limit - don't update if too frequent
+                    return Err(Error::<T>::RegistrationTooSoon);
+                },
+            }
+            let _ = Self::update_score_statistics(did, final_score, now)?;
+            Self::update_global_distribution(final_score);
+            Ok(())
+        }
+
         /// Verify fraud proof with cryptographic signatures
         fn verify_fraud_proof(
             did: &H256,
@@ -4498,8 +4437,9 @@ pub mod pallet {
             relationship.relationship_strength > 0
         }
 
+        
         /// Record behavioral pattern with features
-       pub fn record_behavioral_pattern_internal(
+        pub fn record_behavioral_pattern_internal(
             did: &H256,
             features: &BehavioralFeatures,
         ) -> DispatchResult {
@@ -4533,15 +4473,53 @@ pub mod pallet {
             })
         }
 
-        /// Validate nullifier format
-        fn validate_nullifier(nullifier: &H256) -> bool {
-            *nullifier != H256::zero()
+        fn calculate_recovery_score(
+            recovery: &ProgressiveRecoveryRequest<T>,
+            now: u64,
+        ) -> u32 {
+            let mut score: u32 = 0;
+            
+            let guardian_score: u32 = recovery.guardian_votes.iter()
+                .map(|(guardian, vote_strength)| {
+                    GuardianRelationships::<T>::get(&recovery.did, guardian)
+                        .map(|rel| {
+                            let base = (*vote_strength as u32) * (rel.relationship_strength as u32);
+                            let age_bonus = if now.saturating_sub(rel.established_at) > (365 * 24 * 60 * 60) {
+                                2
+                            } else {
+                                0
+                            };
+                            base + age_bonus
+                        })
+                        .unwrap_or(0)
+                })
+                .sum();
+            score = score.saturating_add(guardian_score.min(30));
+            
+            let behavioral_score = (recovery.behavioral_confidence as u32 * 30) / 100;
+            score = score.saturating_add(behavioral_score);
+            
+            let historical_score = (recovery.historical_proof_strength as u32 * 20) / 100;
+            score = score.saturating_add(historical_score);
+            
+            let stake_score = {
+                let stake_u128 = recovery.economic_stake.saturated_into::<u128>();
+                ((stake_u128 / 1000) as u32).min(20)
+            };
+            score = score.saturating_add(stake_score);
+            
+            let elapsed = now.saturating_sub(recovery.requested_at);
+            let time_score = if elapsed >= recovery.finalization_delay {
+                30
+            } else {
+                ((elapsed as u128 * 30) / recovery.finalization_delay as u128) as u32
+            };
+            score = score.saturating_add(time_score);
+            
+            score
         }
+        
 
-        /// Validate commitment format
-        fn validate_commitment(commitment: &H256) -> bool {
-            *commitment != H256::zero()
-        }
     }
 
     /// Check if personhood is registered
