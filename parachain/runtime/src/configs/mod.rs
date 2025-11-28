@@ -55,6 +55,8 @@ use polkadot_runtime_common::{
 };
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_runtime::Perbill;
+use sp_runtime::traits::StaticLookup;
+use sp_runtime::{MultiSigner, MultiSignature};
 use sp_version::RuntimeVersion;
 use xcm::latest::prelude::BodyId;
 
@@ -131,14 +133,67 @@ impl frame_system::Config for Runtime {
 	type MaxConsumers = frame_support::traits::ConstU32<16>;
 }
 
+// Off-chain worker configuration
+use sp_runtime::traits::StaticLookup;
+
 impl frame_system::offchain::SigningTypes for Runtime {
-    type Public = <Signature as Verify>::Signer;
+    type Public = <Signature as sp_runtime::traits::Verify>::Signer;
     type Signature = Signature;
 }
 
-impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
+impl<LocalCall> frame_system::offchain::CreateSignedTransaction<LocalCall> for Runtime
 where
-    RuntimeCall: From<C>,
+    RuntimeCall: From<LocalCall>,
+{
+    fn create_transaction<C: frame_system::offchain::AppCrypto<MultiSigner, MultiSignature>>(
+        call: LocalCall,
+        public: <Signature as sp_runtime::traits::Verify>::Signer,
+        account: AccountId,
+        nonce: Nonce,
+    ) -> Option<(LocalCall, <UncheckedExtrinsic as sp_runtime::traits::Extrinsic>::SignaturePayload)> {
+        let tip = 0;
+        
+        // Calculate period for mortal transactions
+        let period = BlockHashCount::get()
+            .checked_next_power_of_two()
+            .map(|c| c / 2)
+            .unwrap_or(2) as u64;
+        
+        let current_block = System::block_number()
+            .saturated_into::<u64>()
+            .saturating_sub(1);
+        
+        let era = sp_runtime::generic::Era::mortal(period, current_block);
+        
+        let extra = (
+            frame_system::CheckNonZeroSender::<Runtime>::new(),
+            frame_system::CheckSpecVersion::<Runtime>::new(),
+            frame_system::CheckTxVersion::<Runtime>::new(),
+            frame_system::CheckGenesis::<Runtime>::new(),
+            frame_system::CheckEra::<Runtime>::from(era),
+            frame_system::CheckNonce::<Runtime>::from(nonce),
+            frame_system::CheckWeight::<Runtime>::new(),
+            pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
+        );
+        
+        let raw_payload = SignedPayload::new(call, extra)
+            .map_err(|e| {
+                log::warn!("Unable to create signed payload: {:?}", e);
+            })
+            .ok()?;
+        
+        let signature = raw_payload.using_encoded(|payload| C::sign(payload, public))?;
+        
+        let address = <Runtime as frame_system::Config>::Lookup::unlookup(account);
+        let (call, extra, _) = raw_payload.deconstruct();
+        
+        Some((call, (address, signature.into(), extra)))
+    }
+}
+
+impl frame_system::offchain::SendTransactionTypes<RuntimeCall> for Runtime
+where
+    RuntimeCall: From<RuntimeCall>,
 {
     type Extrinsic = UncheckedExtrinsic;
     type OverarchingCall = RuntimeCall;
@@ -407,9 +462,11 @@ impl pallet_proof_of_personhood::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type TimeProvider = Timestamp;
-    type RegistrationDeposit = RegistrationDeposit;
-    type RecoveryDeposit = RecoveryDeposit;
-	type ZkCredentials = Runtime;
+    type RegistrationDeposit = ConstU128<{ 100 * UNIT }>;
+    type RecoveryDeposit = ConstU128<{ 500 * UNIT }>;
+    type ZkCredentials = PalletZkCredentials;
     type WeightInfo = pallet_proof_of_personhood::weights::SubstrateWeight<Runtime>;
-	type AuthorityId = pallet_proof_of_personhood::crypto::TestAuthId;
+    type AuthorityId = pallet_proof_of_personhood::crypto::TestAuthId;
+    type MinBehavioralConfidence = ConstU8<80>;
+    type MinHistoricalStrength = ConstU8<90>;
 }

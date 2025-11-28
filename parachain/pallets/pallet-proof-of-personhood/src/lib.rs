@@ -14,12 +14,13 @@ pub mod crypto {
         app_crypto::{app_crypto, sr25519},
         MultiSignature, MultiSigner,
     };
+    use frame_system::offchain::AppCrypto as OffchainAppCrypto;
     
     app_crypto!(sr25519, KEY_TYPE);
     
     pub struct TestAuthId;
     
-    impl frame_system::offchain::AppCrypto<MultiSigner, MultiSignature> for TestAuthId {
+    impl OffchainAppCrypto<MultiSigner, MultiSignature> for TestAuthId {
         type RuntimeAppPublic = Public;
         type GenericSignature = sp_core::sr25519::Signature;
         type GenericPublic = sp_core::sr25519::Public;
@@ -35,6 +36,7 @@ pub mod pallet {
     use frame_support::{
         pallet_prelude::*,
         traits::{Currency, ReservableCurrency, Time},
+        BoundedVec
     };
     use sp_runtime::SaturatedConversion;
     use frame_system::pallet_prelude::*;
@@ -42,18 +44,18 @@ pub mod pallet {
     use sp_core::{ H256, ed25519, sr25519 };
     use pallet_identity_registry;
     use crate::weights::WeightInfo;
-    use frame_support::BoundedVec;
     use pallet_zk_credentials;
     use codec::DecodeWithMemTracking;
     use sp_runtime::offchain::{
         http,
         Duration,
     };
+    use sp_runtime::{MultiSigner, MultiSignature};
     use log;
     use frame_system::offchain::{
         SendSignedTransaction, 
         Signer,
-        ForAny
+        AppCrypto as OffchainAppCrypto,
     };
     use core;
     use p256::ecdsa::{
@@ -67,8 +69,8 @@ pub mod pallet {
     use scale_info::prelude::format;
     use signature::Verifier;
     use frame_support::traits::Imbalance;
-    use frame_system::offchain::AppCrypto;
-    use frame_system::offchain::SigningTypes;
+    use sp_runtime::RuntimeDebug;
+    use scale_info::TypeInfo;
 
     type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
@@ -90,20 +92,25 @@ pub mod pallet {
     pub struct Pallet<T>(_);
 
     #[pallet::config]
-    pub trait Config: frame_system::Config + pallet_identity_registry::pallet::Config {
+    pub trait Config: frame_system::Config + pallet_identity_registry::pallet::Config + frame_system::offchain::SigningTypes {
         type Currency: ReservableCurrency<Self::AccountId>;
         type TimeProvider: Time;
+
         #[pallet::constant]
         type RegistrationDeposit: Get<BalanceOf<Self>>;
+
         #[pallet::constant]
         type RecoveryDeposit: Get<BalanceOf<Self>>;
-        type ZkCredentials: pallet_zk_credentials::Config;
+
+        type ZkCredentials: pallet_zk_credentials::pallet::Config;
         type WeightInfo: WeightInfo;
-        type RuntimeCall: From<Call<Self>>;
-        type Public: sp_runtime::traits::IdentifyAccount<AccountId = Self::AccountId>;
-        type Signature: sp_runtime::traits::Verify<Signer = Self::Public>;
-        type AuthorityId: AppCrypto<Self::Public, Self::Signature>;
-        type StrengthType: Get<u32> + PartialOrd;
+
+        type AuthorityId: OffchainAppCrypto<MultiSigner, MultiSignature> +  OffchainAppCrypto<<Self as frame_system::offchain::SigningTypes>::Public, <Self as frame_system::offchain::SigningTypes>::Signature>;
+        #[pallet::constant]
+        type MinBehavioralConfidence: Get<u8>;
+
+        #[pallet::constant]
+        type MinHistoricalStrength: Get<u8>;
     }
 
     /// Personhood proof structure
@@ -988,15 +995,16 @@ pub mod pallet {
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T>
     where 
-        T: SigningTypes, 
+        T: frame_system::offchain::CreateSignedTransaction<Call<T>> + frame_system::offchain::SigningTypes,
+        T::AuthorityId: OffchainAppCrypto<MultiSigner, MultiSignature>,
     {
         fn offchain_worker(block_number: BlockNumberFor<T>) {
             // Run ML inference every 10 blocks
             if (block_number % 10u32.into()).is_zero() {
-                log::info!(" Running ML inference at block {:?}", block_number);
+                log::info!("Running ML inference at block {:?}", block_number);
                 
                 if let Err(e) = Self::run_ml_inference(block_number) {
-                    log::error!(" ML inference failed: {:?}", e);
+                    log::error!("ML inference failed: {:?}", e);
                 }
             }
         }
@@ -1441,9 +1449,9 @@ pub mod pallet {
             let mut recovery = ProgressiveRecoveries::<T>::get(&did)
                 .ok_or(Error::<T>::ProgressiveRecoveryNotFound)?;
             
-            let mut score_increase: u32 = 0;
             let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
-            
+            let mut score_increase: u32 = 0;
+
             match evidence_type {
                 EvidenceType::GuardianApproval { vote_strength } => {
                     // Verify caller is a guardian
@@ -1479,15 +1487,23 @@ pub mod pallet {
                     }
                     
                     // Score: weighted votes (max 30 points)
-                    let total_weighted_votes: u32 = recovery.guardian_votes.iter()
-                        .map(|(g, s)| {
-                            GuardianRelationships::<T>::get(&did, g)
-                                .map(|r| (*s as u32) * (r.relationship_strength as u32))
+                    let guardian_score: u32 = recovery.guardian_votes.iter()
+                        .map(|(guardian, vote_strength)| {
+                            GuardianRelationships::<T>::get(&did, guardian)
+                                .map(|rel| {
+                                    let base = (*vote_strength as u32) * (rel.relationship_strength as u32);
+                                    let age_bonus = if now.saturating_sub(rel.established_at) > (365 * 24 * 60 * 60) {
+                                        2
+                                    } else {
+                                        0
+                                    };
+                                    base + age_bonus
+                                })
                                 .unwrap_or(0)
                         })
                         .sum();
                     
-                    score_increase = total_weighted_votes.min(30);
+                    score_increase = guardian_score.min(30);
                     
                     // Reduce delay: each vote_strength point = 3 days reduction
                     let delay_reduction = (vote_strength as u64) * 3 * 24 * 60 * 60;
@@ -1505,7 +1521,7 @@ pub mod pallet {
                     score_increase = (confidence as u32 * 30) / 100;
                     
                     // High confidence (>80%) reduces delay by 60 days
-                    if confidence > 80 as T::StrengthType {
+                    if confidence > T::MinBehavioralConfidence::get() {
                         recovery.finalization_delay = recovery.finalization_delay
                             .saturating_sub(60 * 24 * 60 * 60)
                             .max(MIN_RECOVERY_DELAY);
@@ -1521,7 +1537,7 @@ pub mod pallet {
                     score_increase = (strength as u32 * 20) / 100;
                     
                     // Strong proof (>90%) reduces delay by 45 days
-                    if strength > 90 as T::StrengthType {
+                    if strength > T::MinHistoricalStrength::get() {
                         recovery.finalization_delay = recovery.finalization_delay
                             .saturating_sub(45 * 24 * 60 * 60)
                             .max(MIN_RECOVERY_DELAY);
@@ -1670,7 +1686,7 @@ pub mod pallet {
             let slashed_balance = slashed_amount.peek();
             let reward = slashed_balance / divisor;
             
-            T::Currency::deposit_creating(&challenger, reward);
+            let _imbalance = T::Currency::deposit_creating(&challenger, reward);
             
             GuardianRelationships::<T>::remove(&did, &fraudulent_guardian);
             
@@ -2240,7 +2256,7 @@ pub mod pallet {
             } else {
                 challenge.status = ChallengeStatus::Dismissed;
                 
-                let (slashed, _) = T::Currency::slash_reserved(&challenge.challenger, bond);
+                let (_slashed, _) = T::Currency::slash_reserved(&challenge.challenger, bond);
                 
                 Some(challenge.challenger.clone())
             };
@@ -2334,86 +2350,142 @@ pub mod pallet {
         }
     }
 
-    impl<T: Config + SigningTypes> Pallet<T> {
+    impl<T: Config> Pallet<T>
+    where
+        T: frame_system::offchain::CreateSignedTransaction<Call<T>> + frame_system::offchain::SigningTypes,
+        T::AuthorityId: OffchainAppCrypto<MultiSigner, MultiSignature>,
+    { 
         /// Main off-chain worker function
-        fn run_ml_inference(block_number: BlockNumberFor<T>) -> Result<(), &'static str> {
+        fn run_ml_inference(_block_number: BlockNumberFor<T>) -> Result<(), &'static str> {
             // Check if we have signing keys
-            let signer = Signer::<T, T::AuthorityId, ForAny>::any_account();
-            if signer.can_sign() {
-                // Fetch pending patterns
-                let pending_patterns = Self::get_pending_ml_patterns();
-                
-                if pending_patterns.is_empty() {
-                    log::debug!("No pending patterns to process");
-                    return Ok(());
-                }
-                
-                log::info!("Processing {} pending patterns", pending_patterns.len());
-                
-                // Get active oracles
-                let active_oracles: Vec<u8> = MLOracles::<T>::iter()
-                    .filter(|(_, oracle)| oracle.active)
-                    .map(|(id, _)| id)
-                    .collect();
-                
-                if active_oracles.is_empty() {
-                    log::error!("No active oracles available");
-                    return Err("No active oracles");
-                }
-
-                for (did, features) in pending_patterns.iter() {
-                    // Query each oracle
-                    for oracle_id in active_oracles.iter() {
-                        // Skip if already responded
-                        if OracleResponses::<T>::contains_key(did, oracle_id) {
-                            continue;
-                        }
-                        match Self::call_ml_oracle(*oracle_id, features) {
-                            Ok(signed_response) => {
-                                if signed_response.did != *did {
-                                    log::error!("DID mismatch from oracle {}", oracle_id);
-                                    continue;
-                                }
-                                
-                                log::info!(
-                                    "Oracle {} response for DID {:?}: {}",
-                                    oracle_id,
-                                    did,
-                                    signed_response.confidence_score
-                                );
-                                
-                                // Submit oracle response
-                                if let Err(e) = Self::submit_oracle_response_transaction(
-                                    &signer,
-                                    *oracle_id,
-                                    signed_response
-                                ) {
-                                    log::error!(
-                                        "Failed to submit oracle {} response: {:?}",
-                                        oracle_id,
-                                        e
-                                    );
-                                }
-                            },
-                            Err(e) => {
-                                log::error!(" ML service call failed for {:?}: {:?}", did, e);
-                                //emit event for monitoring
-                                Self::deposit_event(Event::MLServiceCallFailed {
-                                    did: *did,
-                                    error: e.into(),
-                                });
-                            }
-                        }
-                    }
-                }
-                
-                Ok(())
-            } else {
+            let signer = Signer::<T, T::AuthorityId>::any_account();
+            
+            if !signer.can_sign() {
                 log::warn!("No signing keys available for off-chain worker");
                 return Err("No signing key available");
             }
+            
+            // Fetch pending patterns
+            let pending_patterns = Self::get_pending_ml_patterns();
+            
+            if pending_patterns.is_empty() {
+                log::debug!("No pending patterns to process");
+                return Ok(());
+            }
+            
+            log::info!("Processing {} pending patterns", pending_patterns.len());
+            
+            // Get active oracles
+            let active_oracles: Vec<u8> = MLOracles::<T>::iter()
+                .filter(|(_, oracle)| oracle.active)
+                .map(|(id, _)| id)
+                .collect();
+            
+            if active_oracles.is_empty() {
+                log::error!("No active oracles available");
+                return Err("No active oracles");
+            }
+
+            for (did, features) in pending_patterns.iter() {
+                // Query each oracle
+                for oracle_id in active_oracles.iter() {
+                    // Skip if already responded
+                    if OracleResponses::<T>::contains_key(did, oracle_id) {
+                        continue;
+                    }
+                    
+                    match Self::call_ml_oracle(*oracle_id, features) {
+                        Ok(signed_response) => {
+                            if signed_response.did != *did {
+                                log::error!("DID mismatch from oracle {}", oracle_id);
+                                continue;
+                            }
+                            
+                            log::info!(
+                                "Oracle {} response for DID {:?}: {}",
+                                oracle_id,
+                                did,
+                                signed_response.confidence_score
+                            );
+                            
+                            // Submit oracle response
+                            let oracle_id_local = *oracle_id;
+                            let did_local = *did;
+                            let score = signed_response.confidence_score;
+                            let nonce = signed_response.nonce;
+                            
+                            let results = signer.send_signed_transaction(|_account| {
+                                Call::store_oracle_response {
+                                    oracle_id: oracle_id_local,
+                                    did: did_local,
+                                    score,
+                                    nonce,
+                                }
+                            });
+
+                            if let Some((_, result)) = &results {
+                                match result {
+                                    Ok(_) => {
+                                        log::info!("Submitted oracle {} response for DID {:?}", oracle_id, did);
+                                    },
+                                    Err(e) => {
+                                        log::error!("Failed to submit oracle {} response for DID {:?}: {:?}", oracle_id, did, e);
+                                    }
+                                }
+                            } else {
+                                log::error!("No account available for signing oracle {} response", oracle_id);
+                            }
+                        },
+                        Err(e) => {
+                            log::error!("ML service call failed for {:?}: {:?}", did, e);
+                        }
+                    }
+                }
+            }
+            
+            Ok(())
         }
 
+        /// Submit oracle response transaction
+        #[allow(dead_code)]
+        fn submit_oracle_response_transaction(
+            signer: &Signer<T, T::AuthorityId>,
+            oracle_id: u8,
+            response: SignedMLResponse,
+        ) -> Result<(), &'static str>
+        where
+            T::AuthorityId: OffchainAppCrypto<MultiSigner, MultiSignature>,
+        {
+            let did = response.did;
+            let score = response.confidence_score;
+            let nonce = response.nonce;
+            
+            let results = signer.send_signed_transaction(|_account| {
+                Call::store_oracle_response {
+                    oracle_id,
+                    did,
+                    score,
+                    nonce,
+                }
+            });
+
+            match results {
+                Some((_, result)) => {
+                    if result.is_err() {
+                        return Err("Failed to submit transaction");
+                    }
+                }
+                None => {
+                    return Err("No account available for signing");
+                }
+            }
+            
+            Ok(())
+        }
+
+    }
+    
+    impl<T: Config> Pallet<T> {
         /// Punish oracles that provided fraudulent scores
         fn punish_oracles_for_fraud(did: &H256, fraudulent_score: u8) {
             // Check which oracles submitted scores close to the fraudulent one
@@ -2651,38 +2723,6 @@ pub mod pallet {
             
             let total_score = (signature_score + age_score).min(100);
             Ok(total_score as u8)
-        }   
-        
-        /// Submit oracle response transaction
-        fn submit_oracle_response_transaction(
-            signer: &Signer<T, T::AuthorityId, ForAny>,
-            oracle_id: u8,
-            response: SignedMLResponse,
-        ) -> Result<(), &'static str> {
-            let did = response.did;
-            let score = response.confidence_score;
-            let nonce = response.nonce;
-            
-            let results = signer.send_signed_transaction(|_account| {
-                Call::store_oracle_response { oracle_id, did, score, nonce }
-            });
-            
-            for (_, result) in &results {
-                if result.is_err() {
-                    return Err("Failed to submit transaction");
-                }
-            }
-            
-            if results.is_empty() {
-                return Err("No account available for signing");
-            }
-            
-            Ok(())
-        }
-
-        /// Get signer for submitting transactions
-        fn get_signer() -> Signer<T, T::AuthorityId, ForAny> {
-            Signer::<T, T::AuthorityId, ForAny>::any_account()
         }
     }
 
@@ -3841,7 +3881,7 @@ pub mod pallet {
         }
 
         /// Verify ZK proof that biometric is valid and unique
-        fn verify_biometric_zk_proof(
+        fn verify_biometric_zk_proof( 
             nullifier: &H256,
             commitment: &H256,
             proof_bytes: &[u8],
@@ -3877,8 +3917,8 @@ pub mod pallet {
                 .try_into()
                 .map_err(|_| Error::<T>::InvalidProof)?;
             
-            let zk_proof = pallet_zk_credentials::ZkProof {
-                proof_type: pallet_zk_credentials::ProofType::Personhood,
+            let zk_proof = pallet_zk_credentials::pallet::ZkProof {
+                proof_type: pallet_zk_credentials::pallet::ProofType::Personhood,
                 proof_data: padded_proof,
                 public_inputs: bounded_inputs,
                 credential_hash: *commitment,
@@ -3886,68 +3926,10 @@ pub mod pallet {
                 nonce: *nullifier,
             };
             
-            pallet_zk_credentials::Pallet::<T::ZkCredentials>::verify_proof_internal(&zk_proof)
+            pallet_zk_credentials::pallet::Pallet::<T::ZkCredentials>::verify_proof_internal(&zk_proof)
                 .map_err(|_| Error::<T>::InvalidUniquenessProof)?;
             
             Ok(())
-        }
-
-        /// CROSS-CHAIN VERIFICATION: Generate Merkle proof of registration
-        /// This allows other parachains to verify someone is registered
-        /// without needing to query this chain's full state
-        pub fn generate_existence_proof(nullifier: &H256) -> Result<Vec<Vec<u8>>, Error<T>> {
-            use sp_trie::{generate_trie_proof, LayoutV1};
-            use sp_core::Blake2Hasher;
-            
-            // 1. Ensure nullifier exists
-            ensure!(
-                PersonhoodRegistry::<T>::contains_key(nullifier),
-                Error::<T>::PersonhoodProofNotFound
-            );
-            
-            // 2. Get storage root hash
-            let root_vec = sp_io::storage::root(sp_runtime::StateVersion::V1);
-            let root = H256::from_slice(&root_vec);
-
-            // 3. Build storage key for this nullifier
-            let storage_key = Self::storage_key_for_nullifier(nullifier);
-            
-            // 4. Generate trie proof: This creates a minimal proof that this key exists in the state trie
-            let backend = sp_io::storage::as_trie_backend().ok_or(Error::<T>::InvalidUniquenessProof)?;
-            
-            let proof = generate_trie_proof::<LayoutV1<Blake2Hasher>, _, _, _>(
-                backend,
-                root,
-                &[&storage_key[..]]
-            ).map_err(|_| Error::<T>::InvalidUniquenessProof)?;
-            
-            Ok(proof)
-        }
-        
-        /// CROSS-CHAIN VERIFICATION: Verify Merkle proof from another chain
-        /// Allows this chain to verify someone is registered on another parachain
-        pub fn verify_existence_proof(
-            nullifier: &H256,
-            state_root: H256,
-            proof_nodes: Vec<Vec<u8>>,
-        ) -> Result<bool, Error<T>> {
-            use sp_trie::{verify_trie_proof, LayoutV1};
-            use sp_core::Blake2Hasher;
-            
-            // Build storage key
-            let storage_key = Self::storage_key_for_nullifier(nullifier);
-            
-            // Verify the proof
-            let result = verify_trie_proof::<LayoutV1<Blake2Hasher>, _, _, _>(
-                &state_root,
-                &proof_nodes,
-                &[(storage_key.as_slice(), None::<&[u8]>)],
-            );
-            
-            match result {
-                Ok(_) => Ok(true),
-                Err(_) => Ok(false),
-            }
         }
 
         /// Generate storage key for a nullifier
@@ -4151,8 +4133,8 @@ pub mod pallet {
                         .try_into()
                         .map_err(|_| Error::<T>::InvalidRecoveryProof)?;
                 
-                let zk_proof = pallet_zk_credentials::ZkProof {
-                    proof_type: pallet_zk_credentials::ProofType::Personhood,
+                let zk_proof = pallet_zk_credentials::pallet::ZkProof {
+                    proof_type: pallet_zk_credentials::pallet::ProofType::Personhood,
                     proof_data: bounded_proof,
                     public_inputs: bounded_inputs,
                     credential_hash: *old_did,
@@ -4160,7 +4142,7 @@ pub mod pallet {
                     nonce: *new_nullifier,
                 };
                 
-                pallet_zk_credentials::Pallet::<T::ZkCredentials>::verify_proof_internal(&zk_proof)
+                pallet_zk_credentials::pallet::Pallet::<T::ZkCredentials>::verify_proof_internal(&zk_proof)
                     .map_err(|_| Error::<T>::InvalidRecoveryProof)?;
             }
 
@@ -4202,8 +4184,8 @@ pub mod pallet {
                     .try_into()
                     .map_err(|_| Error::<T>::InvalidCrossBiometricProof)?;
             
-            let zk_proof = pallet_zk_credentials::ZkProof {
-                proof_type: pallet_zk_credentials::ProofType::CrossBiometric,
+            let zk_proof = pallet_zk_credentials::pallet::ZkProof {
+                proof_type: pallet_zk_credentials::pallet::ProofType::CrossBiometric,
                 proof_data: bounded_proof,
                 public_inputs: bounded_inputs,
                 credential_hash: *existing_nullifier,
@@ -4211,7 +4193,7 @@ pub mod pallet {
                 nonce: *new_nullifier,
             };
             
-            pallet_zk_credentials::Pallet::<T::ZkCredentials>::verify_proof_internal(&zk_proof)
+            pallet_zk_credentials::pallet::Pallet::<T::ZkCredentials>::verify_proof_internal(&zk_proof)
                 .map_err(|_| Error::<T>::InvalidCrossBiometricProof)?;
             
             Ok(())
@@ -4334,11 +4316,10 @@ pub mod pallet {
                         });
                     }
                 },
-                AnomalyType::ImpossibleValue { reason } => {
-                    // Reject impossible scores
+                AnomalyType::ImpossibleValue { ref reason } => {
                     Self::deposit_event(Event::AnomalyDetected {
                         did: *did,
-                        anomaly_type: anomaly,
+                        anomaly_type: anomaly.clone(),
                         score: final_score,
                     });
                     

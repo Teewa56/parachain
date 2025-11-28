@@ -33,7 +33,7 @@ use frame_support::{
 	weights::Weight,
 };
 use pallet_aura::Authorities;
-use sp_api::impl_runtime_apis;
+use sp_api::{ impl_runtime_apis, declare_runtime_apis };
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
 use sp_runtime::{
@@ -66,7 +66,19 @@ impl Runtime {
 	}
 }
 
+declare_runtime_apis! {
+    pub trait PersonhoodApi {
+        fn verify_personhood_existence(nullifier: H256) -> bool;
+    }
+}
+
 impl_runtime_apis! {
+	impl self::PersonhoodApi<Block> for Runtime {
+        fn verify_personhood_existence(nullifier: H256) -> bool {
+            pallet_proof_of_personhood::Pallet::<Runtime>::is_personhood_registered(&nullifier)
+        }
+    }
+
 	impl sp_consensus_aura::AuraApi<Block, AuraId> for Runtime {
 		fn slot_duration() -> sp_consensus_aura::SlotDuration {
 			Runtime::impl_slot_duration()

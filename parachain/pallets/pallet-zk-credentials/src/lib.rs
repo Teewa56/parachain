@@ -1,7 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-pub use pallet::*;
-
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
 
@@ -18,7 +16,9 @@ pub mod pallet {
     use frame_support::BoundedVec;
     use crate::weights::WeightInfo;
     use ark_groth16::{Groth16, Proof, prepare_verifying_key, VerifyingKey};
-    use ark_bn254::{Bn254, Fr};
+    use ark_bn254::Bn254;
+    use ark_ec::pairing::Pairing;
+    type Fr = <Bn254 as Pairing>::ScalarField;
     use ark_serialize::CanonicalDeserialize;
     use ark_ff::PrimeField;
     use codec::DecodeWithMemTracking;
@@ -327,7 +327,7 @@ pub mod pallet {
             // Convert public inputs to field elements
             let inputs: Vec<Fr> = proof.public_inputs
                 .iter()
-                .map(|input| Fr::from_le_bytes_mod_order(input))
+                .map(|input| Fr::from_be_bytes_mod_order(input))
                 .collect();
 
             // 1. Prepare the verification key (must be done before using `verify_proof`)

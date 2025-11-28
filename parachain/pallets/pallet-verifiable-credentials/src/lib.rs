@@ -5,6 +5,9 @@ mod benchmarking;
 
 pub mod weights;
 
+#[cfg(feature = "std")]
+use serde::{Deserialize, Serialize};
+
 #[frame_support::pallet]
 pub mod pallet {
     use frame_support::{
@@ -24,7 +27,6 @@ pub mod pallet {
     use sp_std::marker::PhantomData;
     use codec::DecodeWithMemTracking;
     use frame_support::parameter_types;
-    use serde;
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
@@ -59,7 +61,7 @@ pub mod pallet {
 
     /// Credential types
     #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen, DecodeWithMemTracking)]
-    #[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
+    #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
     pub enum CredentialType {
         Education,
         Health,
@@ -1135,19 +1137,19 @@ pub mod pallet {
             
             // Get from pallet-zk-credentials
             let vk = ZkCredentialsPallet::<T::ZkCredentials>::get_verification_key(&proof_type)
-                .ok_or(Error::<T>::VerificationKeyNotFound)?;
+                .ok_or(Error::<T>::VerificationKeyNotFound)?; 
             
             Ok(vk.vk_data.into_inner())
         }
 
         /// Convert ZkCredentialType to ProofType for lookup
-        fn zk_credential_type_to_proof_type(zk_type: &ZkCredentialType) -> pallet_zk_credentials::ProofType {
+        fn zk_credential_type_to_proof_type(zk_type: &ZkCredentialType) -> pallet_zk_credentials::pallet::ProofType {
             match zk_type {
-                ZkCredentialType::StudentStatus => pallet_zk_credentials::ProofType::StudentStatus,
-                ZkCredentialType::VaccinationStatus => pallet_zk_credentials::ProofType::VaccinationStatus,
-                ZkCredentialType::EmploymentStatus => pallet_zk_credentials::ProofType::EmploymentStatus,
-                ZkCredentialType::AgeVerification => pallet_zk_credentials::ProofType::AgeAbove,
-                ZkCredentialType::Custom => pallet_zk_credentials::ProofType::Custom,
+                ZkCredentialType::StudentStatus => pallet_zk_credentials::pallet::ProofType::StudentStatus,
+                ZkCredentialType::VaccinationStatus => pallet_zk_credentials::pallet::ProofType::VaccinationStatus,
+                ZkCredentialType::EmploymentStatus => pallet_zk_credentials::pallet::ProofType::EmploymentStatus,
+                ZkCredentialType::AgeVerification => pallet_zk_credentials::pallet::ProofType::AgeAbove,
+                ZkCredentialType::Custom => pallet_zk_credentials::pallet::ProofType::Custom,
             }
         }
     }
