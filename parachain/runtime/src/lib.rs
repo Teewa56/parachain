@@ -46,34 +46,16 @@ pub type Signature = MultiSignature;
 /// to the public key of our transaction signing scheme.
 pub type AccountId = <<Signature as Verify>::Signer as IdentifyAccount>::AccountId;
 
-/// Balance of an account.
 pub type Balance = u128;
-
-/// Index of a transaction in the chain.
 pub type Nonce = u32;
-
-/// A hash of some data used by the chain.
 pub type Hash = sp_core::H256;
-
-/// An index to a block.
 pub type BlockNumber = u32;
-
-/// The address format for describing accounts.
 pub type Address = MultiAddress<AccountId, ()>;
-
-/// Block header type as expected by this runtime.
 pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
-
-/// Block type as expected by this runtime.
 pub type Block = generic::Block<Header, UncheckedExtrinsic>;
-
-/// A Block signed with a Justification
 pub type SignedBlock = generic::SignedBlock<Block>;
-
-/// BlockId type as expected by this runtime.
 pub type BlockId = generic::BlockId<Block>;
 
-/// The extension to the basic transaction logic.
 #[docify::export(template_signed_extra)]
 pub type TxExtension = cumulus_pallet_weight_reclaim::StorageWeightReclaim<
 	Runtime,
@@ -91,8 +73,7 @@ pub type TxExtension = cumulus_pallet_weight_reclaim::StorageWeightReclaim<
 >;
 
 /// Unchecked extrinsic type as expected by this runtime.
-pub type UncheckedExtrinsic =
-	generic::UncheckedExtrinsic<Address, RuntimeCall, Signature, TxExtension>;
+pub type UncheckedExtrinsic = generic::UncheckedExtrinsic<Address, RuntimeCall, Signature, TxExtension>;
 
 /// All migrations of the runtime, aside from the ones declared in the pallets.
 ///

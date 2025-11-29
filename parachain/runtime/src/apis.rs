@@ -1,28 +1,3 @@
-// This is free and unencumbered software released into the public domain.
-//
-// Anyone is free to copy, modify, publish, use, compile, sell, or
-// distribute this software, either in source code form or as a compiled
-// binary, for any purpose, commercial or non-commercial, and by any
-// means.
-//
-// In jurisdictions that recognize copyright laws, the author or authors
-// of this software dedicate any and all copyright interest in the
-// software to the public domain. We make this dedication for the benefit
-// of the public at large and to the detriment of our heirs and
-// successors. We intend this dedication to be an overt act of
-// relinquishment in perpetuity of all present and future rights to this
-// software under copyright law.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-// IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
-// OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
-// ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-// OTHER DEALINGS IN THE SOFTWARE.
-//
-// For more information, please refer to <http://unlicense.org>
-
 // External crates imports
 use alloc::vec::Vec;
 
@@ -42,6 +17,7 @@ use sp_runtime::{
 	ApplyExtrinsicResult,
 };
 use sp_version::RuntimeVersion;
+use sp_core::H256;
 
 // Local module imports
 use super::{
@@ -74,10 +50,11 @@ declare_runtime_apis! {
 
 impl_runtime_apis! {
 	impl self::PersonhoodApi<Block> for Runtime {
-        fn verify_personhood_existence(nullifier: H256) -> bool {
-            pallet_proof_of_personhood::Pallet::<Runtime>::is_personhood_registered(&nullifier)
-        }
-    }
+		fn verify_personhood_existence(nullifier: H256) -> bool {
+			use frame_support::storage::StorageMap;
+			pallet_proof_of_personhood::PersonhoodRegistry::<Runtime>::contains_key(nullifier)
+		}
+	}
 
 	impl sp_consensus_aura::AuraApi<Block, AuraId> for Runtime {
 		fn slot_duration() -> sp_consensus_aura::SlotDuration {
@@ -313,22 +290,15 @@ impl_runtime_apis! {
 
 	impl sp_genesis_builder::GenesisBuilder<Block> for Runtime {
 		fn preset_names() -> Vec<sp_genesis_builder::PresetId> {
-            vec![
-                sp_genesis_builder::DEV_RUNTIME_PRESET,
-                sp_genesis_builder::LOCAL_TESTNET_RUNTIME_PRESET,
-            ]
-        }
+			genesis_config_presets::preset_names()
+		}
 
-        fn get_preset(id: &sp_genesis_builder::PresetId) -> Option<Vec<u8>> {
-            genesis_config_presets::get_preset(id)
-        }
+		fn get_preset(id: &sp_genesis_builder::PresetId) -> Option<Vec<u8>> {
+			genesis_config_presets::get_preset(id)
+		}
 
-        fn build_state(config: Vec<u8>) -> sp_genesis_builder::Result {
-            let genesis_config: RuntimeGenesisConfig = serde_json::from_slice(&config)
-                .map_err(|e| format!("Failed to deserialize config: {}", e))?;
-
-            genesis_config.build_storage()
-                .map_err(|e| format!("Failed to build storage: {}", e))
-        }
+		fn build_state(config: Vec<u8>) -> sp_genesis_builder::Result {
+			build_state::<RuntimeGenesisConfig>(config)
+		}
 	}
 }

@@ -1,5 +1,5 @@
 [package]
-name = "parachain-template-runtime"
+name = "parachain-runtime"
 description = "Identity Parachain Runtime"
 version = "0.1.0"
 license = "Unlicense"

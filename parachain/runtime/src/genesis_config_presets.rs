@@ -15,6 +15,11 @@ use sp_keyring::Sr25519Keyring;
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use serde_json::Value;
 
+use sp_consensus_aura::sr25519::AuthorityId as AuraId;
+
+// Add this type alias
+type AccountSignature = sp_runtime::MultiSignature;
+
 /// The default XCM version to set in genesis config.
 const SAFE_XCM_VERSION: u32 = xcm::prelude::XCM_VERSION;
 /// Parachain id used for genesis config presets of parachain template.
@@ -32,14 +37,15 @@ fn get_did_hash(did: &str) -> H256 {
     sp_io::hashing::blake2_256(did.as_bytes()).into()
 }
 
-fn get_account_id_from_seed<TPublic: Public>(seed: &str) -> AccountId
+fn get_account_id_from_seed<TPublic: sp_core::Public>(seed: &str) -> AccountId
 where
     AccountSignature: Verify<Signer = TPublic>,
-    TPublic::Pair: Pair,
-    AccountId: From<TPublic::From>,
-    AccountId: IdentifyAccount<AccountId = AccountId>,
+    <TPublic as sp_core::Public>::Pair: sp_core::Pair,
+    AccountId: From<<<TPublic as sp_core::Public>::Pair as sp_core::Pair>::Public>,
 {
-    AccountSignature::from(TPublic::Pair::from_string(&format!("//{}", seed), None).expect("static values are valid; qed").public()).into_account()
+    let pair = <TPublic as sp_core::Public>::Pair::from_string(&format!("//{}", seed), None)
+        .expect("static values are valid; qed");
+    AccountId::from(pair.public())
 }
 
 fn testnet_genesis(
