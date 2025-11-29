@@ -15,6 +15,7 @@ pub mod pallet {
     use codec::Encode;
     use sp_std::vec::Vec;
     use sp_core::H256;
+    use sp_std::vec;
     use xcm::latest::{
         Instruction,
         Location,

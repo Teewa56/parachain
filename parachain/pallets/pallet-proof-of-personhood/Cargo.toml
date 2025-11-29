@@ -12,7 +12,6 @@ publish = false
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-codec = { features = ["derive"], workspace = true }
 scale-info = { features = ["derive"], workspace = true }
 frame-support = { workspace = true, default-features = false }
 frame-system = { workspace = true, default-features = false }
@@ -33,6 +32,7 @@ log = { workspace = true, default-features = false }
 p256 = { version = "0.13.2", default-features = false, features = ["ecdsa", "alloc"] }
 p384 = { version = "0.13.1", default-features = false, features = ["ecdsa", "alloc"] }
 signature = { version = "2.2", default-features = false }
+codec = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 sp-io = { workspace = true }

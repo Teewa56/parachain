@@ -31,7 +31,7 @@ pub mod crypto {
 pub mod pallet {
     use super::*;
     use sp_std::vec;
-    use sp_runtime::traits::Saturating;
+    use sp_runtime::traits::{ Saturating, BlakeTwo256 };
     use pallet_identity_registry::pallet::Identities;
     use frame_support::{
         pallet_prelude::*,
@@ -71,6 +71,8 @@ pub mod pallet {
     use frame_support::traits::Imbalance;
     use sp_runtime::RuntimeDebug;
     use scale_info::TypeInfo;
+    use sp_trie::{verify_trie_proof, LayoutV1};
+    use codec::alloc::string::ToString;
 
     type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
@@ -1450,7 +1452,7 @@ pub mod pallet {
                 .ok_or(Error::<T>::ProgressiveRecoveryNotFound)?;
             
             let now = <T as Config>::TimeProvider::now().saturated_into::<u64>();
-            let mut score_increase: u32 = 0;
+            let score_increase: u32;
 
             match evidence_type {
                 EvidenceType::GuardianApproval { vote_strength } => {
@@ -3958,9 +3960,6 @@ pub mod pallet {
             state_root: H256,
             proof_nodes: Vec<Vec<u8>>,
         ) -> Result<Vec<bool>, Error<T>> {
-            use sp_trie::{verify_trie_proof, LayoutV1};
-            use sp_core::Blake2Hasher;
-            
             let keys: Vec<Vec<u8>> = nullifiers
                 .iter()
                 .map(|n| Self::storage_key_for_nullifier(n))
@@ -3971,7 +3970,7 @@ pub mod pallet {
                 .map(|k| (k.as_slice(), None))
                 .collect();
             
-            let result = verify_trie_proof::<LayoutV1<Blake2Hasher>, _, _, _>(
+            let result = verify_trie_proof::<LayoutV1<BlakeTwo256>, _, _, _>(
                 &state_root,
                 &proof_nodes,
                 &key_refs,

@@ -11,6 +11,7 @@ pub mod pallet {
         pallet_prelude::*,
         traits::{Currency, ReservableCurrency, Time},
     };
+    use sp_std::vec;
     use frame_system::pallet_prelude::*;
     use sp_std::vec::Vec;
     use sp_core::H256;
