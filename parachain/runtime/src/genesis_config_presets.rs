@@ -1,5 +1,5 @@
 use crate::{
-	AccountId, RuntimeGenesisConfig, SessionKeys, EXISTENTIAL_DEPOSIT,
+	AccountId, SessionKeys, EXISTENTIAL_DEPOSIT,
 };
 
 use alloc::{vec, vec::Vec};

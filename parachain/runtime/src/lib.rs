@@ -24,6 +24,8 @@ use sp_runtime::{
 	traits::{BlakeTwo256, IdentifyAccount, Verify},
 	MultiSignature,
 };
+use sp_runtime::generic::Era;
+use codec::Encode;
 
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
@@ -55,6 +57,7 @@ pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
 pub type Block = generic::Block<Header, UncheckedExtrinsic>;
 pub type SignedBlock = generic::SignedBlock<Block>;
 pub type BlockId = generic::BlockId<Block>;
+pub type Index = u32;
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
 #[frame_support::runtime]
@@ -118,29 +121,69 @@ mod runtime {
 
 	// Custom pallets
 	#[runtime::pallet_index(51)]
-	pub type Utility = pallet_utility;
-	#[runtime::pallet_index(52)]
 	pub type ZkCredentials = pallet_zk_credentials;
-	#[runtime::pallet_index(53)]
+	#[runtime::pallet_index(52)]
 	pub type IdentityRegistry = pallet_identity_registry;
-	#[runtime::pallet_index(54)]
+	#[runtime::pallet_index(53)]
 	pub type VerifiableCredentials = pallet_verifiable_credentials;
-	#[runtime::pallet_index(55)]
+	#[runtime::pallet_index(54)]
 	pub type CredentialGovernance = pallet_credential_governance;
-	#[runtime::pallet_index(56)]
+	#[runtime::pallet_index(55)]
 	pub type XcmCredentials = pallet_xcm_credentials;
-	#[runtime::pallet_index(57)]
+	#[runtime::pallet_index(56)]
 	pub type ProofOfPersonhood = pallet_proof_of_personhood;
 }
 
-pub use runtime::{
-	Runtime, RuntimeCall, RuntimeEvent, RuntimeOrigin, RuntimeFreezeReason, RuntimeHoldReason,
-	RuntimeTask, RuntimeGenesisConfig, SessionKeys as ImportedSessionKey, AllPalletsWithSystem, PalletInfo,
-	System, ParachainSystem, Timestamp, Balances, TransactionPayment, Aura, 
-	CollatorSelection, Session, MessageQueue, XcmpQueue, PolkadotXcm,
-	IdentityRegistry, VerifiableCredentials, ZkCredentials, CredentialGovernance,
-	XcmCredentials, ProofOfPersonhood,
-};
+impl frame_system::offchain::CreateSignedTransaction<pallet_proof_of_personhood::Call<Runtime>> for Runtime {
+    fn create_signed_transaction<C>(
+        call: pallet_proof_of_personhood::Call<Runtime>,
+        public: <Self as frame_system::offchain::SigningTypes>::Public,
+        account: AccountId,
+        nonce: Nonce,
+    ) -> Option<
+        <Self as frame_system::offchain::CreateTransactionBase<
+            pallet_proof_of_personhood::Call<Runtime>
+        >>::Extrinsic
+    >
+    where
+        C: frame_system::offchain::AppCrypto<Self::Public, Self::Signature>,
+    {
+        // Sign payload
+        let payload = call.encode();
+        let signature = C::sign(&payload, public)?;
+
+        // Build the signed extra tuple expected by TxExtension
+        let signed_extra = (
+			frame_system::CheckNonZeroSender::<Runtime>::new(),
+			frame_system::CheckSpecVersion::<Runtime>::new(),
+			frame_system::CheckTxVersion::<Runtime>::new(),
+			frame_system::CheckGenesis::<Runtime>::new(),
+			frame_system::CheckEra::<Runtime>::from(Era::Immortal),
+			frame_system::CheckNonce::<Runtime>::from(nonce),
+			frame_system::CheckWeight::<Runtime>::new(),
+			pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(0u128),
+			frame_metadata_hash_extension::CheckMetadataHash::<Runtime>::new(true),
+		);
+
+        let extension = TxExtension::new(signed_extra);
+
+        // Wrap account into Address and pallet call into RuntimeCall
+        let address = account.into();
+        let runtime_call = RuntimeCall::from(call);
+
+        Some(UncheckedExtrinsic::new_signed(runtime_call, address, signature, extension))
+    }
+}
+
+impl frame_system::offchain::SigningTypes for Runtime {
+    type Public = <Signature as Verify>::Signer;
+    type Signature = Signature;
+}
+
+impl frame_system::offchain::CreateTransactionBase<pallet_proof_of_personhood::Call<Runtime>> for Runtime {
+    type Extrinsic = UncheckedExtrinsic;
+    type RuntimeCall = pallet_proof_of_personhood::Call<Runtime>;
+}
 
 #[docify::export(template_signed_extra)]
 pub type TxExtension = cumulus_pallet_weight_reclaim::StorageWeightReclaim<

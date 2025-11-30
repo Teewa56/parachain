@@ -7,6 +7,8 @@ use polkadot_sdk::{
 	staging_xcm as xcm, staging_xcm_builder as xcm_builder, staging_xcm_executor as xcm_executor, *,
 };
 
+use frame_support::traits::EitherOfDiverse;
+
 use frame_support::{
 	parameter_types,
 	traits::{ConstU32, Contains, Everything, Nothing},
@@ -69,26 +71,20 @@ pub type LocalAssetTransactor = FungibleAdapter<
 	(),
 >;
 
-/// This is the type we use to convert an (incoming) XCM origin into a local `Origin` instance,
-/// ready for dispatching a transaction with Xcm's `Transact`. There is an `OriginKind` which can
-/// biases the kind of local `Origin` it will become.
-pub type XcmOriginToTransactDispatchOrigin = (
-	// Sovereign account converter; this attempts to derive an `AccountId` from the origin location
-	// using `LocationToAccountId` and then turn that into the usual `Signed` origin. Useful for
-	// foreign chains who want to have a local sovereign account on this chain which they control.
-	SovereignSignedViaLocation<LocationToAccountId, RuntimeOrigin>,
-	// Native converter for Relay-chain (Parent) location; will convert to a `Relay` origin when
-	// recognized.
-	RelayChainAsNative<RelayChainOrigin, RuntimeOrigin>,
-	// Native converter for sibling Parachains; will convert to a `SiblingPara` origin when
-	// recognized.
-	SiblingParachainAsNative<cumulus_pallet_xcm::Origin, RuntimeOrigin>,
-	// Native signed account converter; this just converts an `AccountId32` origin into a normal
-	// `RuntimeOrigin::Signed` origin of the same 32-byte value.
-	SignedAccountId32AsNative<RelayNetwork, RuntimeOrigin>,
-	// Xcm origins can be represented natively under the Xcm pallet's Xcm origin.
-	XcmPassthrough<RuntimeOrigin>,
-);
+pub type XcmOriginToTransactDispatchOrigin =
+    EitherOfDiverse<
+        SovereignSignedViaLocation<LocationToAccountId, RuntimeOrigin>,
+        EitherOfDiverse<
+            RelayChainAsNative<RelayChainOrigin, RuntimeOrigin>,
+            EitherOfDiverse<
+                SiblingParachainAsNative<cumulus_pallet_xcm::Origin, RuntimeOrigin>,
+                EitherOfDiverse<
+                    SignedAccountId32AsNative<RelayNetwork, RuntimeOrigin>,
+                    XcmPassthrough<RuntimeOrigin>
+                >
+            >
+        >
+    >;
 
 parameter_types! {
 	// One XCM operation is 1_000_000_000 weight - almost certainly a conservative estimate.
@@ -129,7 +125,13 @@ impl xcm_executor::Config for XcmConfig {
 	type XcmEventEmitter = PolkadotXcm;
 	// How to withdraw and deposit an asset.
 	type AssetTransactor = LocalAssetTransactor;
-	type OriginConverter = XcmOriginToTransactDispatchOrigin;
+	type OriginConverter = (
+		SovereignSignedViaLocation<LocationToAccountId, RuntimeOrigin>,
+		RelayChainAsNative<RelayChainOrigin, RuntimeOrigin>,
+		SiblingParachainAsNative<cumulus_pallet_xcm::Origin, RuntimeOrigin>,
+		SignedAccountId32AsNative<RelayNetwork, RuntimeOrigin>,
+		XcmPassthrough<RuntimeOrigin>,
+	);
 	type IsReserve = NativeAsset;
 	type IsTeleporter = (); // Teleporting is disabled.
 	type UniversalLocation = UniversalLocation;

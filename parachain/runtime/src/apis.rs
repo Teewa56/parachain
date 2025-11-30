@@ -114,15 +114,15 @@ impl_runtime_apis! {
 			Executive::finalize_block()
 		}
 
-		fn inherent_extrinsics(data: sp_inherents::InherentData) -> Vec<<Block as BlockT>::Extrinsic> {
+		fn inherent_extrinsics(_data: sp_inherents::InherentData) -> Vec<<Block as BlockT>::Extrinsic> {
 			// Note: InherentData doesn't have create_extrinsics in latest SDK
 			// Each pallet with inherents will provide its own method
 			vec![]
 		}
 
 		fn check_inherents(
-			block: Block,
-			data: sp_inherents::InherentData,
+			_block: Block,
+			_data: sp_inherents::InherentData,
 		) -> sp_inherents::CheckInherentsResult {
 			// Note: InherentData doesn't have check_extrinsics in latest SDK
 			// Each pallet with inherents will check its own

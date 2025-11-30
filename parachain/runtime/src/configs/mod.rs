@@ -1,4 +1,6 @@
 mod xcm_config;
+pub use xcm_config::{XcmOriginToTransactDispatchOrigin, XcmConfig};
+use crate::configs::xcm_config::RelayLocation;
 
 use polkadot_sdk::{staging_parachain_info as parachain_info, staging_xcm as xcm, *};
 #[cfg(not(feature = "runtime-benchmarks"))]
@@ -12,7 +14,7 @@ use frame_support::{
 	dispatch::DispatchClass,
 	parameter_types,
 	traits::{
-		ConstBool, ConstU32, ConstU64, ConstU8, EitherOfDiverse, TransformOrigin, VariantCountOf,
+		ConstBool, ConstU32, ConstU64, ConstU8, ConstU128, EitherOfDiverse, TransformOrigin, VariantCountOf,
 	},
 	weights::{ConstantMultiplier, Weight},
 	PalletId,
@@ -31,6 +33,14 @@ use sp_runtime::Perbill;
 use sp_version::RuntimeVersion;
 use xcm::latest::prelude::BodyId;
 
+use xcm_builder::{
+    SovereignSignedViaLocation,
+    RelayChainAsNative,
+    SiblingParachainAsNative,
+    SignedAccountId32AsNative,
+};
+use pallet_xcm::XcmPassthrough;
+
 // Import types from parent module (runtime)
 use crate::{
 	weights::{BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight},
@@ -42,11 +52,9 @@ use crate::{
 // Import runtime types
 use crate::{
 	Runtime, RuntimeCall, RuntimeEvent, RuntimeOrigin, RuntimeFreezeReason, RuntimeHoldReason, RuntimeTask,
-	System, ParachainSystem, Timestamp, Balances, TransactionPayment, Aura, CollatorSelection, Session,
-	MessageQueue, XcmpQueue, PolkadotXcm, AllPalletsWithSystem, PalletInfo, SessionKeys,
+	System, ParachainSystem, Balances, Aura, CollatorSelection, Session,
+	MessageQueue, XcmpQueue, PalletInfo, SessionKeys,
 };
-
-use xcm_config::{RelayLocation, XcmOriginToTransactDispatchOrigin};
 
 parameter_types! {
 	pub const Version: RuntimeVersion = VERSION;
@@ -190,6 +198,7 @@ impl cumulus_pallet_parachain_system::Config for Runtime {
 	type ReservedXcmpWeight = ReservedXcmpWeight;
 	type CheckAssociatedRelayNumber = RelayNumberMonotonicallyIncreases;
 	type ConsensusHook = crate::ConsensusHook;
+    type RelayParentOffset = ConstU32<0>;
 }
 
 impl parachain_info::Config for Runtime {}
@@ -233,7 +242,13 @@ impl cumulus_pallet_xcmp_queue::Config for Runtime {
 	type MaxActiveOutboundChannels = ConstU32<128>;
 	type MaxPageSize = ConstU32<{ 1 << 16 }>;
 	type ControllerOrigin = EnsureRoot<AccountId>;
-	type ControllerOriginConverter = XcmOriginToTransactDispatchOrigin;
+	type ControllerOriginConverter = (
+		SovereignSignedViaLocation<xcm_config::LocationToAccountId, RuntimeOrigin>,
+		RelayChainAsNative<xcm_config::RelayChainOrigin, RuntimeOrigin>,
+		SiblingParachainAsNative<cumulus_pallet_xcm::Origin, RuntimeOrigin>,
+		SignedAccountId32AsNative<xcm_config::RelayNetwork, RuntimeOrigin>,
+		XcmPassthrough<RuntimeOrigin>,
+	);
 	type WeightInfo = ();
 	type PriceForSiblingDelivery = NoPriceForMessageDelivery<ParaId>;
 }
@@ -256,6 +271,8 @@ impl pallet_session::Config for Runtime {
 	type Keys = SessionKeys;
 	type DisablingStrategy = ();
 	type WeightInfo = ();
+	type Currency = Balances;
+    type KeyDeposit = ConstU128<{ UNIT }>;
 }
 
 #[docify::export(aura_config)]
@@ -264,7 +281,7 @@ impl pallet_aura::Config for Runtime {
 	type DisabledValidators = ();
 	type MaxAuthorities = ConstU32<100_000>;
 	type AllowMultipleBlocksPerSlot = ConstBool<true>;
-	type SlotDuration = ConstU64<SLOT_DURATION>;
+	type SlotDuration = ConstU64<{ SLOT_DURATION }>;
 }
 
 parameter_types! {
@@ -296,14 +313,6 @@ impl pallet_collator_selection::Config for Runtime {
 	type WeightInfo = ();
 }
 
-// utility pallet.
-impl pallet_utility::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type RuntimeCall = RuntimeCall;
-    type PalletsOrigin = RuntimeOrigin;
-    type WeightInfo = pallet_utility::weights::SubstrateWeight<Runtime>;
-}
-
 // custom pallets
 impl pallet_identity_registry::pallet::Config for Runtime {
     type TimeProvider = pallet_timestamp::Pallet<Runtime>;
@@ -312,7 +321,7 @@ impl pallet_identity_registry::pallet::Config for Runtime {
 
 impl pallet_verifiable_credentials::pallet::Config for Runtime {
     type TimeProvider = pallet_timestamp::Pallet<Runtime>;
-    type ZkCredentials = pallet_zk_credentials::pallet::Pallet<Runtime>;
+    type ZkCredentials = Runtime;
     type WeightInfo = pallet_verifiable_credentials::weights::SubstrateWeight<Runtime>;
     type MaxFieldSize = ConstU32<256>;
     type MaxFields = ConstU32<16>;
@@ -346,8 +355,8 @@ parameter_types! {
 impl pallet_xcm_credentials::pallet::Config for Runtime {
     type TimeProvider = pallet_timestamp::Pallet<Runtime>;
     type ParachainId = parachain_info::Pallet<Runtime>;
-    type XcmOriginToTransactDispatchOrigin = XcmOriginToTransactDispatchOrigin;
-    type ParachainIdentity = pallet_xcm::EnsureXcm<frame_support::traits::Everything>;
+	type XcmOriginToTransactDispatchOrigin = xcm_builder::EnsureXcmOrigin<RuntimeOrigin, xcm_config::LocalOriginToLocation>;
+	type ParachainIdentity = pallet_xcm::EnsureXcm<frame_support::traits::Everything>;
     type DefaultXcmFee = DefaultXcmFee;
     type WeightInfo = pallet_xcm_credentials::weights::SubstrateWeight<Runtime>;
 }
@@ -362,7 +371,7 @@ impl pallet_proof_of_personhood::pallet::Config for Runtime {
     type TimeProvider = pallet_timestamp::Pallet<Runtime>;
     type RegistrationDeposit = frame_support::traits::ConstU128<{ 100 * UNIT }>;
     type RecoveryDeposit = frame_support::traits::ConstU128<{ 500 * UNIT }>;
-    type ZkCredentials = pallet_zk_credentials::pallet::Pallet<Runtime>;
+	type ZkCredentials = Runtime;
     type WeightInfo = pallet_proof_of_personhood::weights::SubstrateWeight<Runtime>;
     type AuthorityId = pallet_proof_of_personhood::crypto::TestAuthId;
     type MinBehavioralConfidence = ConstU8<80>;
