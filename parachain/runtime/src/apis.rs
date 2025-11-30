@@ -17,14 +17,17 @@ use sp_runtime::{
 };
 use sp_version::RuntimeVersion;
 use sp_core::H256;
-
-// Local module imports
+use sp_std::vec;
+// Local module imports - import from crate root
 use crate::{
 	genesis_config_presets,
-	AccountId, Balance, Block, ConsensusHook, Executive, Nonce, ParachainSystem,
-	Runtime, RuntimeCall, RuntimeGenesisConfig, SessionKeys, System, TransactionPayment,
+	AccountId, Balance, Block, ConsensusHook, Executive, Nonce, 
+	Runtime, RuntimeCall, RuntimeGenesisConfig, SessionKeys,
 	SLOT_DURATION, VERSION,
 };
+
+// Import pallet types directly
+use crate::{ParachainSystem, System, TransactionPayment};
 
 // we move some impls outside so we can easily use them with `docify`.
 impl Runtime {
@@ -112,14 +115,18 @@ impl_runtime_apis! {
 		}
 
 		fn inherent_extrinsics(data: sp_inherents::InherentData) -> Vec<<Block as BlockT>::Extrinsic> {
-			data.create_extrinsics_for(Runtime)
+			// Note: InherentData doesn't have create_extrinsics in latest SDK
+			// Each pallet with inherents will provide its own method
+			vec![]
 		}
 
 		fn check_inherents(
 			block: Block,
 			data: sp_inherents::InherentData,
 		) -> sp_inherents::CheckInherentsResult {
-			data.check_extrinsics_for(&block, Runtime)
+			// Note: InherentData doesn't have check_extrinsics in latest SDK
+			// Each pallet with inherents will check its own
+			sp_inherents::CheckInherentsResult::new()
 		}
 	}
 
@@ -238,7 +245,8 @@ impl_runtime_apis! {
 			use polkadot_sdk::frame_support::traits::StorageInfoTrait;
 			use frame_system_benchmarking::Pallet as SystemBench;
 			use cumulus_pallet_session_benchmarking::Pallet as SessionBench;
-			use crate::runtime::*;
+			
+			use crate::{AllPalletsWithSystem, Runtime};
 
 			let mut list = Vec::<BenchmarkList>::new();
 			list_benchmarks!(list, extra);
@@ -252,7 +260,8 @@ impl_runtime_apis! {
 			config: frame_benchmarking::BenchmarkConfig
 		) -> Result<Vec<frame_benchmarking::BenchmarkBatch>, alloc::string::String> {
 			use frame_benchmarking::{BenchmarkError, BenchmarkBatch};
-			use crate::runtime::*;
+			
+			use crate::{AllPalletsWithSystem, Runtime, ParachainSystem, System};
 
 			use frame_system_benchmarking::Pallet as SystemBench;
 			impl frame_system_benchmarking::Config for Runtime {

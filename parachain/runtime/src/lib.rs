@@ -56,6 +56,92 @@ pub type Block = generic::Block<Header, UncheckedExtrinsic>;
 pub type SignedBlock = generic::SignedBlock<Block>;
 pub type BlockId = generic::BlockId<Block>;
 
+// Create the runtime by composing the FRAME pallets that were previously configured.
+#[frame_support::runtime]
+mod runtime {
+	#[runtime::runtime]
+	#[runtime::derive(
+		RuntimeCall,
+		RuntimeEvent,
+		RuntimeError,
+		RuntimeOrigin,
+		RuntimeFreezeReason,
+		RuntimeHoldReason,
+		RuntimeSlashReason,
+		RuntimeLockId,
+		RuntimeTask
+	)]
+	pub struct Runtime;
+
+	#[runtime::pallet_index(0)]
+	pub type System = frame_system;
+	#[runtime::pallet_index(1)]
+	pub type ParachainSystem = cumulus_pallet_parachain_system;
+	#[runtime::pallet_index(2)]
+	pub type Timestamp = pallet_timestamp;
+	#[runtime::pallet_index(3)]
+	pub type ParachainInfo = parachain_info;
+	#[runtime::pallet_index(4)]
+	pub type WeightReclaim = cumulus_pallet_weight_reclaim;
+
+	// Monetary stuff.
+	#[runtime::pallet_index(10)]
+	pub type Balances = pallet_balances;
+	#[runtime::pallet_index(11)]
+	pub type TransactionPayment = pallet_transaction_payment;
+
+	// Governance
+	#[runtime::pallet_index(15)]
+	pub type Sudo = pallet_sudo;
+
+	// Collator support. The order of these 4 are important and shall not change.
+	#[runtime::pallet_index(20)]
+	pub type Authorship = pallet_authorship;
+	#[runtime::pallet_index(21)]
+	pub type CollatorSelection = pallet_collator_selection;
+	#[runtime::pallet_index(22)]
+	pub type Session = pallet_session;
+	#[runtime::pallet_index(23)]
+	pub type Aura = pallet_aura;
+	#[runtime::pallet_index(24)]
+	pub type AuraExt = cumulus_pallet_aura_ext;
+
+	// XCM helpers.
+	#[runtime::pallet_index(30)]
+	pub type XcmpQueue = cumulus_pallet_xcmp_queue;
+	#[runtime::pallet_index(31)]
+	pub type PolkadotXcm = pallet_xcm;
+	#[runtime::pallet_index(32)]
+	pub type CumulusXcm = cumulus_pallet_xcm;
+	#[runtime::pallet_index(33)]
+	pub type MessageQueue = pallet_message_queue;
+
+	// Custom pallets
+	#[runtime::pallet_index(51)]
+	pub type Utility = pallet_utility;
+	#[runtime::pallet_index(52)]
+	pub type ZkCredentials = pallet_zk_credentials;
+	#[runtime::pallet_index(53)]
+	pub type IdentityRegistry = pallet_identity_registry;
+	#[runtime::pallet_index(54)]
+	pub type VerifiableCredentials = pallet_verifiable_credentials;
+	#[runtime::pallet_index(55)]
+	pub type CredentialGovernance = pallet_credential_governance;
+	#[runtime::pallet_index(56)]
+	pub type XcmCredentials = pallet_xcm_credentials;
+	#[runtime::pallet_index(57)]
+	pub type ProofOfPersonhood = pallet_proof_of_personhood;
+}
+
+pub use runtime::{
+	Runtime, RuntimeCall, RuntimeEvent, RuntimeOrigin, RuntimeFreezeReason, RuntimeHoldReason,
+	RuntimeTask, RuntimeGenesisConfig, SessionKeys as ImportedSessionKey, AllPalletsWithSystem, PalletInfo,
+	System, ParachainSystem, Timestamp, Balances, TransactionPayment, Aura, 
+	CollatorSelection, Session, MessageQueue, XcmpQueue, PolkadotXcm,
+	IdentityRegistry, VerifiableCredentials, ZkCredentials, CredentialGovernance,
+	XcmCredentials, ProofOfPersonhood,
+};
+
 #[docify::export(template_signed_extra)]
 pub type TxExtension = cumulus_pallet_weight_reclaim::StorageWeightReclaim<
 	Runtime,
@@ -228,83 +314,6 @@ type ConsensusHook = cumulus_pallet_aura_ext::FixedVelocityConsensusHook<
 #[cfg(feature = "std")]
 pub fn native_version() -> NativeVersion {
 	NativeVersion { runtime_version: VERSION, can_author_with: Default::default() }
-}
-
-// Create the runtime by composing the FRAME pallets that were previously configured.
-#[frame_support::runtime]
-mod runtime {
-	#[runtime::runtime]
-	#[runtime::derive(
-		RuntimeCall,
-		RuntimeEvent,
-		RuntimeError,
-		RuntimeOrigin,
-		RuntimeFreezeReason,
-		RuntimeHoldReason,
-		RuntimeSlashReason,
-		RuntimeLockId,
-		RuntimeTask
-	)]
-	pub struct Runtime;
-
-	#[runtime::pallet_index(0)]
-	pub type System = frame_system;
-	#[runtime::pallet_index(1)]
-	pub type ParachainSystem = cumulus_pallet_parachain_system;
-	#[runtime::pallet_index(2)]
-	pub type Timestamp = pallet_timestamp;
-	#[runtime::pallet_index(3)]
-	pub type ParachainInfo = parachain_info;
-	#[runtime::pallet_index(4)]
-	pub type WeightReclaim = cumulus_pallet_weight_reclaim;
-
-	// Monetary stuff.
-	#[runtime::pallet_index(10)]
-	pub type Balances = pallet_balances;
-	#[runtime::pallet_index(11)]
-	pub type TransactionPayment = pallet_transaction_payment;
-
-	// Governance
-	#[runtime::pallet_index(15)]
-	pub type Sudo = pallet_sudo;
-
-	// Collator support. The order of these 4 are important and shall not change.
-	#[runtime::pallet_index(20)]
-	pub type Authorship = pallet_authorship;
-	#[runtime::pallet_index(21)]
-	pub type CollatorSelection = pallet_collator_selection;
-	#[runtime::pallet_index(22)]
-	pub type Session = pallet_session;
-	#[runtime::pallet_index(23)]
-	pub type Aura = pallet_aura;
-	#[runtime::pallet_index(24)]
-	pub type AuraExt = cumulus_pallet_aura_ext;
-
-	// XCM helpers.
-	#[runtime::pallet_index(30)]
-	pub type XcmpQueue = cumulus_pallet_xcmp_queue;
-	#[runtime::pallet_index(31)]
-	pub type PolkadotXcm = pallet_xcm;
-	#[runtime::pallet_index(32)]
-	pub type CumulusXcm = cumulus_pallet_xcm;
-	#[runtime::pallet_index(33)]
-	pub type MessageQueue = pallet_message_queue;
-
-	// Custom pallets
-	#[runtime::pallet_index(51)]
-	pub type Utility = pallet_utility;
-	#[runtime::pallet_index(52)]
-	pub type ZkCredentials = pallet_zk_credentials;
-	#[runtime::pallet_index(53)]
-	pub type IdentityRegistry = pallet_identity_registry;
-	#[runtime::pallet_index(54)]
-	pub type VerifiableCredentials = pallet_verifiable_credentials;
-	#[runtime::pallet_index(55)]
-	pub type CredentialGovernance = pallet_credential_governance;
-	#[runtime::pallet_index(56)]
-	pub type XcmCredentials = pallet_xcm_credentials;
-	#[runtime::pallet_index(57)]
-	pub type ProofOfPersonhood = pallet_proof_of_personhood;
 }
 
 #[docify::export(register_validate_block)]

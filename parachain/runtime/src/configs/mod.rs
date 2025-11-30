@@ -1,5 +1,4 @@
 mod xcm_config;
-use xcm_config::XcmRouter;
 
 use polkadot_sdk::{staging_parachain_info as parachain_info, staging_xcm as xcm, *};
 #[cfg(not(feature = "runtime-benchmarks"))]
@@ -32,15 +31,21 @@ use sp_runtime::Perbill;
 use sp_version::RuntimeVersion;
 use xcm::latest::prelude::BodyId;
 
-// Local module imports
-use super::{
+// Import types from parent module (runtime)
+use crate::{
 	weights::{BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight},
-	AccountId, Aura, Balance, Balances, Block, BlockNumber, CollatorSelection, ConsensusHook, Hash,
-	MessageQueue, Nonce, PalletInfo, ParachainSystem, Runtime, RuntimeCall, RuntimeEvent,
-	RuntimeFreezeReason, RuntimeHoldReason, RuntimeOrigin, RuntimeTask, Session, SessionKeys,
-	System, WeightToFee, XcmpQueue, AVERAGE_ON_INITIALIZE_RATIO, EXISTENTIAL_DEPOSIT, HOURS,
+	AccountId, Balance, BlockNumber, Hash, Nonce,
+	AVERAGE_ON_INITIALIZE_RATIO, EXISTENTIAL_DEPOSIT, HOURS,
 	MAXIMUM_BLOCK_WEIGHT, MICRO_UNIT, NORMAL_DISPATCH_RATIO, SLOT_DURATION, VERSION, DAYS, UNIT,
 };
+
+// Import runtime types
+use crate::{
+	Runtime, RuntimeCall, RuntimeEvent, RuntimeOrigin, RuntimeFreezeReason, RuntimeHoldReason, RuntimeTask,
+	System, ParachainSystem, Timestamp, Balances, TransactionPayment, Aura, CollatorSelection, Session,
+	MessageQueue, XcmpQueue, PolkadotXcm, AllPalletsWithSystem, PalletInfo, SessionKeys,
+};
+
 use xcm_config::{RelayLocation, XcmOriginToTransactDispatchOrigin};
 
 parameter_types! {
@@ -85,7 +90,7 @@ impl frame_system::Config for Runtime {
 	/// The type for hashing blocks and tries.
 	type Hash = Hash;
 	/// The block type.
-	type Block = Block;
+	type Block = crate::Block;
 	/// Maximum number of block number to block hash mappings to keep (oldest pruned first).
 	type BlockHashCount = BlockHashCount;
 	/// Runtime version.
@@ -154,7 +159,7 @@ parameter_types! {
 impl pallet_transaction_payment::Config for Runtime {
 	type RuntimeEvent = RuntimeEvent;
 	type OnChargeTransaction = pallet_transaction_payment::FungibleAdapter<Balances, ()>;
-	type WeightToFee = WeightToFee;
+	type WeightToFee = crate::WeightToFee;
 	type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
 	type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Self>;
 	type OperationalFeeMultiplier = ConstU8<5>;
@@ -184,7 +189,7 @@ impl cumulus_pallet_parachain_system::Config for Runtime {
 	type XcmpMessageHandler = XcmpQueue;
 	type ReservedXcmpWeight = ReservedXcmpWeight;
 	type CheckAssociatedRelayNumber = RelayNumberMonotonicallyIncreases;
-	type ConsensusHook = ConsensusHook;
+	type ConsensusHook = crate::ConsensusHook;
 }
 
 impl parachain_info::Config for Runtime {}
@@ -301,13 +306,11 @@ impl pallet_utility::Config for Runtime {
 
 // custom pallets
 impl pallet_identity_registry::pallet::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
     type TimeProvider = pallet_timestamp::Pallet<Runtime>;
     type WeightInfo = pallet_identity_registry::weights::SubstrateWeight<Runtime>;
 }
 
 impl pallet_verifiable_credentials::pallet::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
     type TimeProvider = pallet_timestamp::Pallet<Runtime>;
     type ZkCredentials = pallet_zk_credentials::pallet::Pallet<Runtime>;
     type WeightInfo = pallet_verifiable_credentials::weights::SubstrateWeight<Runtime>;
@@ -318,7 +321,6 @@ impl pallet_verifiable_credentials::pallet::Config for Runtime {
 }
 
 impl pallet_zk_credentials::pallet::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
     type WeightInfo = pallet_zk_credentials::weights::SubstrateWeight<Runtime>;
 }
 
@@ -329,7 +331,6 @@ parameter_types! {
 }
 
 impl pallet_credential_governance::pallet::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type TimeProvider = pallet_timestamp::Pallet<Runtime>;
     type ProposalDeposit = ProposalDeposit;
@@ -343,10 +344,8 @@ parameter_types! {
 }
 
 impl pallet_xcm_credentials::pallet::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
     type TimeProvider = pallet_timestamp::Pallet<Runtime>;
     type ParachainId = parachain_info::Pallet<Runtime>;
-    type XcmRouter = XcmRouter;
     type XcmOriginToTransactDispatchOrigin = XcmOriginToTransactDispatchOrigin;
     type ParachainIdentity = pallet_xcm::EnsureXcm<frame_support::traits::Everything>;
     type DefaultXcmFee = DefaultXcmFee;
@@ -359,7 +358,6 @@ parameter_types! {
 }
 
 impl pallet_proof_of_personhood::pallet::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type TimeProvider = pallet_timestamp::Pallet<Runtime>;
     type RegistrationDeposit = frame_support::traits::ConstU128<{ 100 * UNIT }>;
