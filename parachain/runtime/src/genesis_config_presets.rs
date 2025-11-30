@@ -7,7 +7,7 @@ use alloc::{vec, vec::Vec};
 use polkadot_sdk::{staging_xcm as xcm, *};
 
 use cumulus_primitives_core::ParaId;
-use sp_core::{H256, sr25519};
+use sp_core::H256;
 use sp_genesis_builder::{PresetId, DEV_RUNTIME_PRESET, LOCAL_TESTNET_RUNTIME_PRESET};
 use sp_keyring::Sr25519Keyring;
 
@@ -145,8 +145,8 @@ fn development_config_genesis() -> serde_json::Value {
 }
 
 /// Provides the JSON preset based on the requested name
-pub fn get_preset(id: &PresetId) -> Option<Vec<u8>> {
-    let patch = match id.as_ref() {
+pub fn get_preset(id: &str) -> Option<Vec<u8>> {
+    let patch = match id {
         DEV_RUNTIME_PRESET => development_config_genesis(),
         LOCAL_TESTNET_RUNTIME_PRESET => local_testnet_genesis(),
         _ => return None,

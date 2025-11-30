@@ -26,9 +26,6 @@ use crate::{
 	SLOT_DURATION, VERSION,
 };
 
-// Pull types from the runtime module
-use crate::runtime::InherentDataExt;
-
 // we move some impls outside so we can easily use them with `docify`.
 impl Runtime {
 	#[docify::export]
@@ -115,14 +112,14 @@ impl_runtime_apis! {
 		}
 
 		fn inherent_extrinsics(data: sp_inherents::InherentData) -> Vec<<Block as BlockT>::Extrinsic> {
-			data.create_extrinsics()
+			data.create_extrinsics_for(Runtime)
 		}
 
 		fn check_inherents(
 			block: Block,
 			data: sp_inherents::InherentData,
 		) -> sp_inherents::CheckInherentsResult {
-			data.check_extrinsics(&block)
+			data.check_extrinsics_for(&block, Runtime)
 		}
 	}
 
@@ -289,8 +286,8 @@ impl_runtime_apis! {
 			genesis_config_presets::preset_names()
 		}
 
-		fn get_preset(id: &sp_genesis_builder::PresetId) -> Option<Vec<u8>> {
-			genesis_config_presets::get_preset(id)
+		fn get_preset(id: &Option<sp_genesis_builder::PresetId>) -> Option<Vec<u8>> {
+			genesis_config_presets::get_preset(id.as_ref()?)
 		}
 
 		fn build_state(config: Vec<u8>) -> sp_genesis_builder::Result {

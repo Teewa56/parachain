@@ -2,6 +2,7 @@
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
 
+// Make the WASM binary available.
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
@@ -37,7 +38,12 @@ pub use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
 
 use weights::ExtrinsicBaseWeight;
+
+/// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
 pub type Signature = MultiSignature;
+
+/// Some way of identifying an account on the chain. We intentionally make it equivalent
+/// to the public key of our transaction signing scheme.
 pub type AccountId = <<Signature as Verify>::Signer as IdentifyAccount>::AccountId;
 
 pub type Balance = u128;
@@ -66,10 +72,16 @@ pub type TxExtension = cumulus_pallet_weight_reclaim::StorageWeightReclaim<
 	),
 >;
 
+/// Unchecked extrinsic type as expected by this runtime.
 pub type UncheckedExtrinsic = generic::UncheckedExtrinsic<Address, RuntimeCall, Signature, TxExtension>;
+
+/// All migrations of the runtime, aside from the ones declared in the pallets.
+///
+/// This can be a tuple of types, each implementing `OnRuntimeUpgrade`.
 #[allow(unused_parens)]
 type Migrations = ();
 
+/// Executive: handles dispatch to the various modules.
 pub type Executive = frame_executive::Executive<
 	Runtime,
 	Block,
@@ -79,10 +91,22 @@ pub type Executive = frame_executive::Executive<
 	Migrations,
 >;
 
+/// Handles converting a weight scalar to a fee value, based on the scale and granularity of the
+/// node's balance type.
+///
+/// This should typically create a mapping between the following ranges:
+///   - `[0, MAXIMUM_BLOCK_WEIGHT]`
+///   - `[Balance::min, Balance::max]`
+///
+/// Yet, it can be used for any other sort of change to weight-fee. Some examples being:
+///   - Setting it to `0` will essentially disable the weight fee.
+///   - Setting it to `1` will cause the literal `#[weight = x]` values to be charged.
 pub struct WeightToFee;
 impl WeightToFeePolynomial for WeightToFee {
 	type Balance = Balance;
 	fn polynomial() -> WeightToFeeCoefficients<Self::Balance> {
+		// in Rococo, extrinsic base weight (smallest non-zero weight) is mapped to 1 MILLI_UNIT:
+		// in our template, we map to 1/10 of that, or 1/10 MILLI_UNIT
 		let p = MILLI_UNIT / 10;
 		let q = 100 * Balance::from(ExtrinsicBaseWeight::get().ref_time());
 		smallvec![WeightToFeeCoefficient {
@@ -94,6 +118,10 @@ impl WeightToFeePolynomial for WeightToFee {
 	}
 }
 
+/// Opaque types. These are used by the CLI to instantiate machinery that don't need to know
+/// the specifics of the runtime. They can then be made to be agnostic over specific formats
+/// of data like extrinsics, allowing for them to continue syncing the network through upgrades
+/// to even the core data structures.
 pub mod opaque {
 	use super::*;
 	pub use polkadot_sdk::sp_runtime::OpaqueExtrinsic as UncheckedExtrinsic;
@@ -102,9 +130,13 @@ pub mod opaque {
 		traits::{BlakeTwo256, Hash as HashT},
 	};
 
+	/// Opaque block header type.
 	pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
+	/// Opaque block type.
 	pub type Block = generic::Block<Header, UncheckedExtrinsic>;
+	/// Opaque block identifier type.
 	pub type BlockId = generic::BlockId<Block>;
+	/// Opaque block hash type.
 	pub type Hash = <BlakeTwo256 as HashT>::Output;
 }
 
@@ -128,7 +160,16 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
 
 #[docify::export]
 mod block_times {
+	/// This determines the average expected block time that we are targeting. Blocks will be
+	/// produced at a minimum duration defined by `SLOT_DURATION`. `SLOT_DURATION` is picked up by
+	/// `pallet_timestamp` which is in turn picked up by `pallet_aura` to implement `fn
+	/// slot_duration()`.
+	///
+	/// Change this to adjust the block time.
 	pub const MILLI_SECS_PER_BLOCK: u64 = 6000;
+
+	// NOTE: Currently it is not possible to change the slot duration after the chain has started.
+	// Attempting to do so will brick block production.
 	pub const SLOT_DURATION: u64 = MILLI_SECS_PER_BLOCK;
 }
 pub use block_times::*;

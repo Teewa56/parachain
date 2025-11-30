@@ -1,5 +1,4 @@
 mod xcm_config;
-use super::OriginCaller;
 use xcm_config::XcmRouter;
 
 use polkadot_sdk::{staging_parachain_info as parachain_info, staging_xcm as xcm, *};
@@ -22,7 +21,6 @@ use frame_support::{
 use frame_system::{
 	limits::{BlockLength, BlockWeights},
 	EnsureRoot,
-	offchain::{CreateSignedTransaction, SignedPayload, SigningTypes},
 };
 use pallet_xcm::{EnsureXcm, IsVoiceOfBody};
 use parachains_common::message_queue::{NarrowOriginToSibling, ParaIdToSibling};
@@ -31,13 +29,7 @@ use polkadot_runtime_common::{
 };
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_runtime::Perbill;
-use sp_runtime::{
-	generic::Era,
-	traits::{ StaticLookup, Verify },
-	MultiSigner, MultiSignature,
-};
 use sp_version::RuntimeVersion;
-use sp_core::H256;
 use xcm::latest::prelude::BodyId;
 
 // Local module imports
@@ -45,9 +37,9 @@ use super::{
 	weights::{BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight},
 	AccountId, Aura, Balance, Balances, Block, BlockNumber, CollatorSelection, ConsensusHook, Hash,
 	MessageQueue, Nonce, PalletInfo, ParachainSystem, Runtime, RuntimeCall, RuntimeEvent,
-	RuntimeFreezeReason, RuntimeHoldReason, RuntimeOrigin, RuntimeTask, Session, SessionKeys, Signature,
+	RuntimeFreezeReason, RuntimeHoldReason, RuntimeOrigin, RuntimeTask, Session, SessionKeys,
 	System, WeightToFee, XcmpQueue, AVERAGE_ON_INITIALIZE_RATIO, EXISTENTIAL_DEPOSIT, HOURS,
-	MAXIMUM_BLOCK_WEIGHT, MICRO_UNIT, NORMAL_DISPATCH_RATIO, SLOT_DURATION, VERSION,  UncheckedExtrinsic, DAYS, UNIT,
+	MAXIMUM_BLOCK_WEIGHT, MICRO_UNIT, NORMAL_DISPATCH_RATIO, SLOT_DURATION, VERSION, DAYS, UNIT,
 };
 use xcm_config::{RelayLocation, XcmOriginToTransactDispatchOrigin};
 
@@ -113,63 +105,7 @@ impl frame_system::Config for Runtime {
 	type MaxConsumers = frame_support::traits::ConstU32<16>;
 }
 
-// Off-chain worker configuration
-impl frame_system::offchain::SigningTypes for Runtime {
-    type Public = <Signature as Verify>::Signer;
-    type Signature = Signature;
-}
-
-impl<LocalCall> frame_system::offchain::CreateSignedTransaction<LocalCall> for Runtime
-where
-    RuntimeCall: From<LocalCall>,
-{
-    fn create_transaction<C: frame_system::offchain::AppCrypto<Self::Public, Self::Signature>>(
-        call: LocalCall,
-        public: Self::Public,
-        account: AccountId,
-        nonce: Nonce,
-    ) -> Option<(RuntimeCall, <UncheckedExtrinsic as sp_runtime::traits::Extrinsic>::SignaturePayload)> {
-        use sp_runtime::traits::StaticLookup;
-        
-        let tip = 0;
-        let period = BlockHashCount::get()
-            .checked_next_power_of_two()
-            .map(|c| c / 2)
-            .unwrap_or(2) as u64;
-        
-        let current_block = System::block_number()
-            .saturated_into::<u64>()
-            .saturating_sub(1);
-        
-        let era = Era::mortal(period, current_block);
-        
-        let extra = (
-            frame_system::CheckNonZeroSender::<Runtime>::new(),
-            frame_system::CheckSpecVersion::<Runtime>::new(),
-            frame_system::CheckTxVersion::<Runtime>::new(),
-            frame_system::CheckGenesis::<Runtime>::new(),
-            frame_system::CheckEra::<Runtime>::from(era),
-            frame_system::CheckNonce::<Runtime>::from(nonce),
-            frame_system::CheckWeight::<Runtime>::new(),
-            pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
-            frame_metadata_hash_extension::CheckMetadataHash::<Runtime>::new(),
-        );
-        
-        let raw_payload = SignedPayload::new(call, extra).ok()?;
-        let signature = raw_payload.using_encoded(|payload| C::sign(payload, public))?;
-        let address = <Runtime as frame_system::Config>::Lookup::unlookup(account);
-        let (call, extra, _) = raw_payload.deconstruct();
-        
-        Some((call.into(), (address, signature, extra)))
-    }
-}
-
-impl frame_system::offchain::SendTransactionTypes<RuntimeCall> for Runtime {
-    type Extrinsic = UncheckedExtrinsic;
-    type OverarchingCall = RuntimeCall;
-}
-
-/// Configure the palelt weight reclaim tx.
+/// Configure the pallet weight reclaim tx.
 impl cumulus_pallet_weight_reclaim::Config for Runtime {
 	type WeightInfo = ();
 }
@@ -249,7 +185,6 @@ impl cumulus_pallet_parachain_system::Config for Runtime {
 	type ReservedXcmpWeight = ReservedXcmpWeight;
 	type CheckAssociatedRelayNumber = RelayNumberMonotonicallyIncreases;
 	type ConsensusHook = ConsensusHook;
-	type SelectCore = cumulus_pallet_parachain_system::DefaultCoreSelector<Runtime>;
 }
 
 impl parachain_info::Config for Runtime {}
@@ -360,21 +295,21 @@ impl pallet_collator_selection::Config for Runtime {
 impl pallet_utility::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type RuntimeCall = RuntimeCall;
-    type PalletsOrigin = OriginCaller;
+    type PalletsOrigin = RuntimeOrigin;
     type WeightInfo = pallet_utility::weights::SubstrateWeight<Runtime>;
 }
 
 // custom pallets
-impl pallet_identity_registry::Config for Runtime {
+impl pallet_identity_registry::pallet::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type TimeProvider = pallet_timestamp::Pallet<Runtime>;
     type WeightInfo = pallet_identity_registry::weights::SubstrateWeight<Runtime>;
 }
 
-impl pallet_verifiable_credentials::Config for Runtime {
+impl pallet_verifiable_credentials::pallet::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type TimeProvider = pallet_timestamp::Pallet<Runtime>;
-    type ZkCredentials = pallet_zk_credentials::Pallet<Runtime>;
+    type ZkCredentials = pallet_zk_credentials::pallet::Pallet<Runtime>;
     type WeightInfo = pallet_verifiable_credentials::weights::SubstrateWeight<Runtime>;
     type MaxFieldSize = ConstU32<256>;
     type MaxFields = ConstU32<16>;
@@ -382,7 +317,7 @@ impl pallet_verifiable_credentials::Config for Runtime {
     type MaxCredentialCleanupPerBlock = ConstU32<10>; 
 }
 
-impl pallet_zk_credentials::Config for Runtime {
+impl pallet_zk_credentials::pallet::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type WeightInfo = pallet_zk_credentials::weights::SubstrateWeight<Runtime>;
 }
@@ -393,7 +328,7 @@ parameter_types! {
     pub const ApprovalThreshold: u8 = 66;
 }
 
-impl pallet_credential_governance::Config for Runtime {
+impl pallet_credential_governance::pallet::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type TimeProvider = pallet_timestamp::Pallet<Runtime>;
@@ -407,7 +342,7 @@ parameter_types! {
     pub const DefaultXcmFee: Weight = Weight::from_parts(500_000_000_000, 0);
 }
 
-impl pallet_xcm_credentials::Config for Runtime {
+impl pallet_xcm_credentials::pallet::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type TimeProvider = pallet_timestamp::Pallet<Runtime>;
     type ParachainId = parachain_info::Pallet<Runtime>;
@@ -423,13 +358,13 @@ parameter_types! {
     pub const RecoveryDeposit: Balance = 50 * UNIT;
 }
 
-impl pallet_proof_of_personhood::Config for Runtime {
+impl pallet_proof_of_personhood::pallet::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type TimeProvider = pallet_timestamp::Pallet<Runtime>;
     type RegistrationDeposit = frame_support::traits::ConstU128<{ 100 * UNIT }>;
     type RecoveryDeposit = frame_support::traits::ConstU128<{ 500 * UNIT }>;
-    type ZkCredentials = pallet_zk_credentials::Pallet<Runtime>;
+    type ZkCredentials = pallet_zk_credentials::pallet::Pallet<Runtime>;
     type WeightInfo = pallet_proof_of_personhood::weights::SubstrateWeight<Runtime>;
     type AuthorityId = pallet_proof_of_personhood::crypto::TestAuthId;
     type MinBehavioralConfidence = ConstU8<80>;
