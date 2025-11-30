@@ -1,10 +1,9 @@
-// External crates imports
 use alloc::vec::Vec;
 
 use polkadot_sdk::*;
 
 use frame_support::{
-	genesis_builder_helper::{build_state, get_preset},
+	genesis_builder_helper::build_state,
 	weights::Weight,
 };
 use pallet_aura::Authorities;
@@ -20,11 +19,15 @@ use sp_version::RuntimeVersion;
 use sp_core::H256;
 
 // Local module imports
-use super::{
-	AccountId, Balance, Block, ConsensusHook, Executive, InherentDataExt, Nonce, ParachainSystem,
+use crate::{
+	genesis_config_presets,
+	AccountId, Balance, Block, ConsensusHook, Executive, Nonce, ParachainSystem,
 	Runtime, RuntimeCall, RuntimeGenesisConfig, SessionKeys, System, TransactionPayment,
 	SLOT_DURATION, VERSION,
 };
+
+// Pull types from the runtime module
+use crate::runtime::InherentDataExt;
 
 // we move some impls outside so we can easily use them with `docify`.
 impl Runtime {
@@ -51,8 +54,7 @@ decl_runtime_apis! {
 impl_runtime_apis! {
 	impl self::PersonhoodApi<Block> for Runtime {
 		fn verify_personhood_existence(nullifier: H256) -> bool {
-			use frame_support::storage::StorageMap;
-			pallet_proof_of_personhood::PersonhoodRegistry::<Runtime>::contains_key(nullifier)
+			pallet_proof_of_personhood::pallet::PersonhoodRegistry::<Runtime>::contains_key(nullifier)
 		}
 	}
 
@@ -100,12 +102,6 @@ impl_runtime_apis! {
 
 		fn metadata_versions() -> Vec<u32> {
 			Runtime::metadata_versions()
-		}
-	}
-
-	impl frame_support::view_functions::runtime_api::RuntimeViewFunction<Block> for Runtime {
-		fn execute_view_function(id: frame_support::view_functions::ViewFunctionId, input: Vec<u8>) -> Result<Vec<u8>, frame_support::view_functions::ViewFunctionDispatchError> {
-			Runtime::execute_view_function(id, input)
 		}
 	}
 
@@ -217,7 +213,7 @@ impl_runtime_apis! {
 	#[cfg(feature = "try-runtime")]
 	impl frame_try_runtime::TryRuntime<Block> for Runtime {
 		fn on_runtime_upgrade(checks: frame_try_runtime::UpgradeCheckSelect) -> (Weight, Weight) {
-			use super::configs::RuntimeBlockWeights;
+			use crate::configs::RuntimeBlockWeights;
 
 			let weight = Executive::try_runtime_upgrade(checks).unwrap();
 			(weight, RuntimeBlockWeights::get().max_block)
@@ -245,7 +241,7 @@ impl_runtime_apis! {
 			use polkadot_sdk::frame_support::traits::StorageInfoTrait;
 			use frame_system_benchmarking::Pallet as SystemBench;
 			use cumulus_pallet_session_benchmarking::Pallet as SessionBench;
-			use super::*;
+			use crate::runtime::*;
 
 			let mut list = Vec::<BenchmarkList>::new();
 			list_benchmarks!(list, extra);
@@ -259,7 +255,7 @@ impl_runtime_apis! {
 			config: frame_benchmarking::BenchmarkConfig
 		) -> Result<Vec<frame_benchmarking::BenchmarkBatch>, alloc::string::String> {
 			use frame_benchmarking::{BenchmarkError, BenchmarkBatch};
-			use super::*;
+			use crate::runtime::*;
 
 			use frame_system_benchmarking::Pallet as SystemBench;
 			impl frame_system_benchmarking::Config for Runtime {

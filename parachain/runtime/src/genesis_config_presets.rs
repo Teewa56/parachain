@@ -1,6 +1,5 @@
 use crate::{
-	AccountId, BalancesConfig, CollatorSelectionConfig, ParachainInfoConfig, PolkadotXcmConfig,
-	RuntimeGenesisConfig, SessionConfig, SessionKeys, SudoConfig, EXISTENTIAL_DEPOSIT,
+	AccountId, RuntimeGenesisConfig, SessionKeys, EXISTENTIAL_DEPOSIT,
 };
 
 use alloc::{vec, vec::Vec};
@@ -8,17 +7,11 @@ use alloc::{vec, vec::Vec};
 use polkadot_sdk::{staging_xcm as xcm, *};
 
 use cumulus_primitives_core::ParaId;
-use sp_core::{H256, Pair, Public};
-use serde_json::Value;
+use sp_core::{H256, sr25519};
 use sp_genesis_builder::{PresetId, DEV_RUNTIME_PRESET, LOCAL_TESTNET_RUNTIME_PRESET};
 use sp_keyring::Sr25519Keyring;
-use sp_runtime::traits::{IdentifyAccount, Verify};
-use serde_json::Value;
 
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
-
-// Add this type alias
-type AccountSignature = sp_runtime::MultiSignature;
 
 /// The default XCM version to set in genesis config.
 const SAFE_XCM_VERSION: u32 = xcm::prelude::XCM_VERSION;
@@ -37,23 +30,12 @@ fn get_did_hash(did: &str) -> H256 {
     sp_io::hashing::blake2_256(did.as_bytes()).into()
 }
 
-fn get_account_id_from_seed<TPublic: sp_core::Public>(seed: &str) -> AccountId
-where
-    AccountSignature: Verify<Signer = TPublic>,
-    <TPublic as sp_core::Public>::Pair: sp_core::Pair,
-    AccountId: From<<<TPublic as sp_core::Public>::Pair as sp_core::Pair>::Public>,
-{
-    let pair = <TPublic as sp_core::Public>::Pair::from_string(&format!("//{}", seed), None)
-        .expect("static values are valid; qed");
-    AccountId::from(pair.public())
-}
-
 fn testnet_genesis(
 	invulnerables: Vec<(AccountId, AuraId)>,
 	endowed_accounts: Vec<AccountId>,
 	root: AccountId,
 	id: ParaId,
-) -> Value {
+) -> serde_json::Value {
 	serde_json::json!({
         "balances": {
             "balances": endowed_accounts
@@ -83,7 +65,7 @@ fn testnet_genesis(
     })
 }
 
-fn local_testnet_genesis() -> Value {
+fn local_testnet_genesis() -> serde_json::Value {
 	testnet_genesis(
 		// initial collators.
 		vec![
@@ -96,13 +78,13 @@ fn local_testnet_genesis() -> Value {
 	)
 }
 
-fn development_config_genesis() -> Value {
+fn development_config_genesis() -> serde_json::Value {
     let alice_did = get_did_hash("did:src:alice");
     let bob_did = get_did_hash("did:src:bob");
     
     let alice = Sr25519Keyring::Alice.to_account_id();
     let root_key = alice.clone();
-    let mut invulnerables = vec![
+    let invulnerables = vec![
         (Sr25519Keyring::Alice.to_account_id(), Sr25519Keyring::Alice.public().into()),
         (Sr25519Keyring::Bob.to_account_id(), Sr25519Keyring::Bob.public().into()),
     ];
