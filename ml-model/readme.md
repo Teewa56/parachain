@@ -83,7 +83,7 @@ Confidence Score (0-100)
 ```bash
 # Clone repository
 git clone <repo-url>
-cd ml-behavioral-biometrics
+cd ml-model
 
 # Create virtual environment
 python -m venv venv
