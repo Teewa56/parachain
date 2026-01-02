@@ -2559,4 +2559,980 @@ fn check_and_finalize_consensus(did: &H256, now: u64) -> Result<(), Error<T>> {
     match anomaly {
         AnomalyType::Normal => {
             // Store final ML score
-            MLScores::<T>::insert(did, (final_
+            MLScores::<T>::insert(did, (final_score, now));
+            
+            // Remove from pending queue
+            PendingMLPatterns::<T>::remove(did);
+            
+            // Clean up oracle responses
+            for oracle_id in participating_oracles.iter() {
+                OracleResponses::<T>::remove(did, oracle_id);
+            }
+            
+            Self::deposit_event(Event::ConsensusReached {
+                did: *did,
+                final_score,
+                participating_oracles,
+            });
+        },
+        AnomalyType::SuddenSpike { deviation } | 
+        AnomalyType::SuddenDrop { deviation } => {
+            if deviation > 30 {
+                Self::deposit_event(Event::AnomalyDetected {
+                    did: *did,
+                    anomaly_type: anomaly,
+                    score: final_score,
+                });
+                return Err(Error::<T>::InvalidFeatureData);
+            }
+        },
+        _ => {
+            Self::deposit_event(Event::AnomalyDetected {
+                did: *did,
+                anomaly_type: anomaly,
+                score: final_score,
+            });
+            return Err(Error::<T>::InvalidFeatureData);
+        }
+    }
+    
+    // 7. Update statistics
+    update_score_statistics(did, final_score, now)?;
+    update_global_distribution(final_score);
+    
+    Ok(())
+}
+```
+
+---
+
+## 5. Security Model
+
+### 5.1 Threat Model
+
+#### Attack Vectors
+
+**1. Sybil Attacks**
+- **Threat**: One person creates multiple identities
+- **Mitigations**:
+  - Biometric nullifiers (one nullifier per person)
+  - Registration deposits (economic cost)
+  - Cooldown periods (6 months between registrations)
+  - ZK proof of uniqueness
+
+**2. Biometric Replay Attacks**
+- **Threat**: Attacker replays captured biometric data
+- **Mitigations**:
+  - Session tokens with timestamps
+  - Liveness detection in ZK circuits
+  - Nonce-based replay prevention
+  - Used proof tracking in `VerifiedProofs` storage
+
+**3. Credential Forgery**
+- **Threat**: Creating fake credentials
+- **Mitigations**:
+  - Trusted issuer whitelist (governance controlled)
+  - Cryptographic signatures from issuers
+  - On-chain verification of issuer status
+  - Credential revocation mechanism
+
+**4. Selective Disclosure Exploitation**
+- **Threat**: Revealing unintended credential fields
+- **Mitigations**:
+  - ZK proofs for field disclosure
+  - Merkle tree commitments
+  - Disclosure record tracking
+  - Field validation before revealing
+
+**5. Social Engineering (Guardian Fraud)**
+- **Threat**: Malicious guardians approve fraudulent recovery
+- **Mitigations**:
+  - 6-month recovery delay
+  - Progressive evidence requirements
+  - Guardian bonding (slashing for fraud)
+  - Active user can cancel recovery
+  - Fraud challenge mechanism
+
+**6. Takeover of Dormant Accounts**
+- **Threat**: Recovering inactive accounts
+- **Mitigations**:
+  - Activity tracking (`LastActivity` storage)
+  - 12-month dormancy threshold
+  - Multi-layered evidence requirements
+  - High recovery score requirement (100+)
+
+**7. Oracle Manipulation**
+- **Threat**: ML oracles providing false scores
+- **Mitigations**:
+  - Multi-oracle consensus (requires 3+ oracles)
+  - Variance tolerance checks
+  - Reputation-weighted averaging
+  - TEE attestation verification (Intel SGX/AMD SEV)
+  - Fraud challenge mechanism
+  - Oracle slashing for outliers
+
+**8. Privacy Leaks**
+- **Threat**: Revealing biometric data or credential details
+- **Mitigations**:
+  - Biometric data never stored on-chain (only nullifiers/commitments)
+  - Zero-knowledge proofs for all verifications
+  - Selective disclosure (user controls revealed fields)
+  - Encrypted credential data (only hash on-chain)
+
+---
+
+### 5.2 Cryptographic Security
+
+#### Hash Function Security
+
+**Blake2-256**:
+- **Collision Resistance**: 2^128 operations
+- **Preimage Resistance**: 2^256 operations
+- **Second Preimage Resistance**: 2^256 operations
+
+**Usage in PortableID**:
+```
+DID Hash: did_hash = H(did_string)
+Nullifier: nullifier = H(biometric_template)
+Commitment: commitment = H(biometric_template || salt)
+Credential ID: cred_id = H(subject || issuer || data_hash || timestamp)
+```
+
+#### Digital Signature Security
+
+**Ed25519**:
+- **Security Level**: 128-bit (equivalent to RSA-3072)
+- **Signature Size**: 64 bytes
+- **Public Key Size**: 32 bytes
+- **Advantages**: Fast, deterministic, side-channel resistant
+
+**Sr25519** (Schnorr on Ristretto):
+- **Security Level**: 128-bit
+- **Advantages**: Hierarchical derivation, batch verification
+- **Use Case**: Substrate account signatures
+
+#### Zero-Knowledge Proof Security
+
+**Groth16 on BN254**:
+- **Security Level**: 100-bit (reduced from 128-bit due to recent attacks on BN curves)
+- **Trusted Setup**: Required (circuit-specific)
+- **Proof Size**: 192 bytes (3 group elements)
+- **Verification Time**: O(1) - 2 pairings
+
+**Security Assumptions**:
+1. **Decisional Bilinear Diffie-Hellman (DBDH)**: Distinguishing e(g, h)^abc from random
+2. **Knowledge of Exponent (KEA)**: Cannot forge proofs without knowing witness
+3. **Trusted Setup Integrity**: CRS generated honestly (multi-party computation)
+
+**Mitigation of Trusted Setup Risk**:
+- Use multi-party computation (MPC) ceremonies
+- Publish ceremony transcripts
+- Allow verifiable randomness contribution
+- Consider migrating to transparent proof systems (e.g., STARKs, Bulletproofs) in future
+
+---
+
+### 5.3 Privacy Guarantees
+
+#### Zero-Knowledge Properties
+
+**Completeness**: If statement is true and prover is honest, verifier accepts with probability 1.
+
+**Soundness**: If statement is false, malicious prover cannot convince verifier except with negligible probability.
+
+**Zero-Knowledge**: Verifier learns nothing beyond validity of the statement.
+
+#### Selective Disclosure Privacy
+
+**What Verifier Learns**:
+- Credential exists
+- Credential is active (not revoked/expired)
+- Issuer is trusted
+- Revealed fields match claimed values
+
+**What Verifier Does NOT Learn**:
+- Hidden credential fields
+- Subject's full identity
+- Other credentials subject holds
+- Biometric data
+
+**Example: Age Verification**
+```
+Public Inputs:
+  - age_threshold = 21
+  - current_year = 2025
+
+Private Inputs:
+  - birth_year = 1995
+
+Proof Output:
+  ✓ age ≥ 21 (TRUE)
+
+Verifier Learns: User is ≥21
+Verifier Does NOT Learn: Exact age, birth date, birth year
+```
+
+#### Biometric Privacy
+
+**On-Chain Data**:
+- Nullifier: H(biometric_template)
+- Commitment: H(biometric_template || salt)
+
+**Properties**:
+1. **Non-Reversibility**: Cannot recover biometric from hash
+2. **Unlinkability**: Different salts → different commitments for same biometric
+3. **Collision Resistance**: Different people → different nullifiers (high probability)
+
+**Privacy Attack Resistance**:
+- **Database Reconstruction**: Impossible (one-way hash)
+- **Rainbow Tables**: Infeasible (biometric space too large, salted)
+- **Timing Attacks**: Constant-time hash operations
+- **Side-Channel Attacks**: No biometric processing on-chain
+
+---
+
+### 5.4 Economic Security
+
+#### Incentive Alignment
+
+**Registration Deposit**:
+```
+Purpose: Prevent Sybil attacks via economic cost
+Amount: Configurable (e.g., 100 tokens)
+Return Condition: Upon voluntary deactivation
+Slashing Condition: Proven fraud
+```
+
+**Proposal Deposit**:
+```
+Purpose: Prevent governance spam
+Amount: Configurable (e.g., 1000 tokens)
+Return Condition: Proposal passes
+Slashing Condition: Proposal rejected (50% slash)
+```
+
+**Guardian Bond**:
+```
+Purpose: Ensure guardian honesty
+Amount: Minimum threshold (e.g., 500 tokens)
+Return Condition: No fraud detected
+Slashing Condition: Fraudulent recovery approval (100% slash)
+```
+
+**Recovery Economic Stake**:
+```
+Purpose: Signal confidence in recovery legitimacy
+Amount: User-determined
+Effect: Higher stake → higher recovery score → faster recovery
+Return Condition: Successful recovery
+Slash Condition: Recovery deemed fraudulent
+```
+
+#### Attack Cost Analysis
+
+**Sybil Attack Cost**:
+```
+Single Identity: 100 tokens deposit + 6 months wait + biometric uniqueness
+10 Identities: 1000 tokens + impossible (biometric uniqueness)
+Conclusion: Economically infeasible + cryptographically impossible
+```
+
+**Fraudulent Recovery Cost**:
+```
+Initiate Recovery: Free (anyone can request)
+Guardian Bribery: 3+ guardians × (bond + bribe) = 1500+ tokens minimum
+Time Cost: 6 months base delay
+Success Probability: Low (active user can cancel, behavioral mismatch)
+Expected Loss: 1500 tokens + 6 months (if active user cancels)
+```
+
+**Governance Attack Cost**:
+```
+Malicious Proposal: 1000 tokens (50% slashed if rejected)
+Council Control: Requires majority voting power
+Legitimate Issuers: Economic reputation at stake
+Conclusion: High cost, low benefit
+```
+
+---
+
+## 6. Cross-Chain Architecture
+
+### 6.1 Cross-Chain Vision
+
+**Supported Chains**:
+1. **Polkadot Ecosystem** (XCM native)
+2. **Ethereum** (via bridge)
+3. **Solana** (via Wormhole/custom bridge)
+4. **Sui** (via bridge)
+5. **Stacks** (via bridge)
+
+### 6.2 XCM Integration (Polkadot Parachains)
+
+#### Pallet: XCM Credentials
+
+**Storage Items**:
+```rust
+/// Registered parachains
+pub type RegisteredParachains<T: Config> = StorageMap
+    Blake2_128Concat,
+    u32,              // para_id
+    ParachainRegistry,
+    OptionQuery
+>;
+
+/// Pending cross-chain requests
+pub type PendingRequests<T: Config> = StorageMap
+    Blake2_128Concat,
+    H256,             // request_hash
+    XcmCredentialRequest,
+    OptionQuery
+>;
+
+/// Verification results from other chains
+pub type VerificationResults<T: Config> = StorageMap
+    Blake2_128Concat,
+    H256,             // credential_hash
+    BoundedVec<XcmCredentialResponse, ConstU32<10>>,
+    ValueQuery
+>;
+
+/// Exported credentials
+pub type ExportedCredentials<T: Config> = StorageDoubleMap
+    Blake2_128Concat,
+    H256,             // credential_hash
+    Blake2_128Concat,
+    u32,              // destination_para_id
+    bool,
+    ValueQuery
+>;
+
+/// Imported credentials from other chains
+pub type ImportedCredentials<T: Config> = StorageDoubleMap
+    Blake2_128Concat,
+    u32,              // source_para_id
+    Blake2_128Concat,
+    H256,             // credential_hash
+    BoundedVec<u8, ConstU32<4096>>,
+    OptionQuery
+>;
+```
+
+**Cross-Chain Verification Request**:
+```rust
+pub fn request_cross_chain_verification(
+    origin: OriginFor<T>,
+    credential_hash: H256,
+    target_para_id: u32,
+) -> DispatchResult {
+    let who = ensure_signed(origin)?;
+    
+    // 1. Check parachain registered & trusted
+    let registry = RegisteredParachains::<T>::get(target_para_id)
+        .ok_or(Error::<T>::ParachainNotRegistered)?;
+    ensure!(registry.trusted, Error::<T>::ParachainNotTrusted);
+    
+    // 2. Create request
+    let request = XcmCredentialRequest {
+        source_para_id: Self::get_current_para_id(),
+        credential_hash,
+        requester: who.encode().try_into()?,
+        timestamp: TimeProvider::now().saturated_into(),
+    };
+    
+    let request_hash = blake2_256(&request.encode()).into();
+    PendingRequests::<T>::insert(request_hash, request.clone());
+    
+    // 3. Send XCM message
+    send_verification_request(target_para_id, credential_hash, request_hash)?;
+    
+    Self::deposit_event(Event::VerificationRequested {
+        credential_hash,
+        target_para_id,
+    });
+    
+    Ok(())
+}
+```
+
+**XCM Message Structure**:
+```rust
+fn send_verification_request(
+    target_para_id: u32,
+    credential_hash: H256,
+    request_hash: H256,
+) -> DispatchResult {
+    let destination = Location::new(
+        1,  // Parent (Relay Chain)
+        [Junction::Parachain(target_para_id)]
+    );
+    
+    let encoded_call = encode_verification_request_call(credential_hash, request_hash);
+    
+    let message = Xcm(vec![
+        Instruction::Transact {
+            origin_kind: OriginKind::Native,
+            fallback_max_weight: Some(Weight::from_parts(
+                1_000_000_000,
+                64 * 1024
+            )),
+            call: encoded_call.try_into()?,
+        }
+    ]);
+    
+    let mut dest = Some(destination);
+    let mut msg = Some(message);
+    
+    let (ticket, _assets) = T::XcmRouter::validate(&mut dest, &mut msg)?;
+    T::XcmRouter::deliver(ticket)?;
+    
+    Ok(())
+}
+```
+
+**Consensus-Based Validation**:
+```rust
+pub fn is_credential_valid_cross_chain(credential_hash: &H256) -> bool {
+    let responses = VerificationResults::<T>::get(credential_hash);
+    
+    if responses.is_empty() {
+        return false;
+    }
+    
+    let now = TimeProvider::now().saturated_into::<u64>();
+    
+    // Filter fresh responses (within 1 hour)
+    let valid_responses: Vec<_> = responses
+        .iter()
+        .filter(|r| {
+            let age = now.saturating_sub(r.created_at);
+            age < 3600 && r.is_valid
+        })
+        .collect();
+    
+    // Require 2/3 consensus
+    let required = (responses.len() * 2 / 3) + 1;
+    valid_responses.len() >= required
+}
+```
+
+---
+
+### 6.3 Ethereum Bridge Architecture
+
+**Components**:
+1. **Smart Contract** (Solidity on Ethereum)
+2. **Relayer Network** (Off-chain message passing)
+3. **Light Client** (Verify Polkadot finality on Ethereum)
+
+#### Ethereum Smart Contract (Conceptual)
+
+```solidity
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract PortableIDBridge {
+    struct Credential {
+        bytes32 subjectDid;
+        bytes32 issuerDid;
+        uint8 credentialType;
+        bytes32 dataHash;
+        uint64 issuedAt;
+        uint64 expiresAt;
+        uint8 status;
+        bytes32 signature;
+    }
+    
+    struct ZKProof {
+        uint8 proofType;
+        bytes proofData;
+        bytes[] publicInputs;
+        bytes32 credentialHash;
+        uint64 createdAt;
+        bytes32 nonce;
+    }
+    
+    // Mapping: credential_id => Credential
+    mapping(bytes32 => Credential) public credentials;
+    
+    // Mapping: proof_hash => verified
+    mapping(bytes32 => bool) public verifiedProofs;
+    
+    // Trusted relayers
+    mapping(address => bool) public trustedRelayers;
+    
+    // Events
+    event CredentialImported(bytes32 indexed credentialId, bytes32 indexed subjectDid);
+    event ProofVerified(bytes32 indexed proofHash, address indexed verifier);
+    
+    // Modifier: Only trusted relayer
+    modifier onlyRelayer() {
+        require(trustedRelayers[msg.sender], "Not trusted relayer");
+        _;
+    }
+    
+    /**
+     * @notice Import credential from PortableID parachain
+     * @param credentialId Credential ID
+     * @param credential Credential data
+     * @param proof Merkle proof of parachain state
+     */
+    function importCredential(
+        bytes32 credentialId,
+        Credential calldata credential,
+        bytes calldata proof
+    ) external onlyRelayer {
+        // 1. Verify Merkle proof (parachain state root)
+        require(verifyStateProof(credentialId, credential, proof), "Invalid proof");
+        
+        // 2. Store credential
+        credentials[credentialId] = credential;
+        
+        emit CredentialImported(credentialId, credential.subjectDid);
+    }
+    
+    /**
+     * @notice Verify ZK proof for selective disclosure
+     * @param zkProof Zero-knowledge proof
+     * @return bool Verification result
+     */
+    function verifyZKProof(ZKProof calldata zkProof) external returns (bool) {
+        // 1. Check not replayed
+        bytes32 proofHash = keccak256(abi.encode(zkProof));
+        require(!verifiedProofs[proofHash], "Proof already verified");
+        
+        // 2. Verify Groth16 proof (using precompiled contract)
+        bool valid = verifyGroth16(
+            zkProof.proofData,
+            zkProof.publicInputs
+        );
+        
+        if (valid) {
+            verifiedProofs[proofHash] = true;
+            emit ProofVerified(proofHash, msg.sender);
+        }
+        
+        return valid;
+    }
+    
+    /**
+     * @notice Verify Groth16 proof using bn256 precompile
+     */
+    function verifyGroth16(
+        bytes memory proofData,
+        bytes[] memory publicInputs
+    ) internal view returns (bool) {
+        // Use Ethereum bn256 pairing precompile (address 0x08)
+        // Implementation details depend on proof format
+        // This is a simplified placeholder
+        (bool success, bytes memory result) = address(0x08).staticcall(
+            abi.encodePacked(proofData, publicInputs)
+        );
+        
+        return success && abi.decode(result, (bool));
+    }
+    
+    /**
+     * @notice Verify Merkle proof of parachain state
+     */
+    function verifyStateProof(
+        bytes32 credentialId,
+        Credential calldata credential,
+        bytes calldata proof
+    ) internal view returns (bool) {
+        // Verify against stored Polkadot state root
+        // Implementation requires light client
+        // This is a simplified placeholder
+        return true;
+    }
+}
+```
+
+#### Relayer Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                     Relayer Network                     │
+│  (Off-Chain, Monitors Both Chains, Trustless Bridge)   │
+└─────────────────────────────────────────────────────────┘
+           │                                   │
+           ▼                                   ▼
+┌──────────────────────┐          ┌──────────────────────┐
+│  PortableID Parachain│          │   Ethereum Network   │
+│  (Source Chain)      │          │   (Target Chain)     │
+│                      │          │                      │
+│  Event: Credential   │──────────│  Call: Import        │
+│         Exported     │   Step 1 │        Credential    │
+│                      │◄─────────│                      │
+│  Event: Finalized    │  Step 2  │  Event: Imported     │
+└──────────────────────┘          └──────────────────────┘
+```
+
+**Relayer Responsibilities**:
+1. **Monitor Parachain Events**: Watch for `CredentialExported` events
+2. **Wait for Finality**: Ensure event is finalized (GRANDPA finality)
+3. **Generate State Proof**: Create Merkle proof of parachain state
+4. **Submit to Ethereum**: Call `importCredential()` on bridge contract
+5. **Handle Failures**: Retry with exponential backoff
+
+---
+
+### 6.4 Solana Integration
+
+**Approach**: Wormhole bridge + Custom verification program
+
+**Architecture**:
+```
+PortableID Parachain
+        │
+        ▼ (Wormhole Guardian Network)
+Wormhole Core Bridge
+        │
+        ▼
+Solana Verification Program
+        │
+        ▼
+User dApp (Solana-native)
+```
+
+**Solana Program (Rust)**:
+```rust
+use anchor_lang::prelude::*;
+
+declare_id!("PortableID11111111111111111111111111111111");
+
+#[program]
+pub mod portableid_solana {
+    use super::*;
+    
+    pub fn import_credential(
+        ctx: Context<ImportCredential>,
+        credential_id: [u8; 32],
+        credential_data: Vec<u8>,
+        wormhole_vaa: Vec<u8>,  // Verified Action Approval
+    ) -> Result<()> {
+        // 1. Verify Wormhole VAA (signed by guardian network)
+        verify_wormhole_message(&wormhole_vaa)?;
+        
+        // 2. Parse credential data
+        let credential = parse_credential(&credential_data)?;
+        
+        // 3. Store in Solana account
+        let credential_account = &mut ctx.accounts.credential_account;
+        credential_account.credential_id = credential_id;
+        credential_account.subject_did = credential.subject_did;
+        credential_account.issuer_did = credential.issuer_did;
+        credential_account.is_valid = true;
+        
+        emit!(CredentialImported {
+            credential_id,
+            subject_did: credential.subject_did,
+        });
+        
+        Ok(())
+    }
+    
+    pub fn verify_zk_proof(
+        ctx: Context<VerifyProof>,
+        proof_data: Vec<u8>,
+        public_inputs: Vec<Vec<u8>>,
+    ) -> Result<bool> {
+        // NOTE: Solana does not have BN254 pairing precompile
+        // Options:
+        // 1. Use Groth16 verifier implemented in Rust (expensive)
+        // 2. Use alternative proof system (Bulletproofs, STARKs)
+        // 3. Verify only proof hash, rely on parachain verification
+        
+        // For now, we'll verify the proof was verified on parachain
+        let proof_hash = hash_proof(&proof_data, &public_inputs);
+        
+        // Check if proof hash was attested via Wormhole
+        require!(
+            ctx.accounts.verified_proofs.contains(&proof_hash),
+            ErrorCode::ProofNotVerified
+        );
+        
+        Ok(true)
+    }
+}
+
+#[derive(Accounts)]
+pub struct ImportCredential<'info> {
+    #[account(init, payer = user, space = 8 + 32 + 32 + 32 + 1)]
+    pub credential_account: Account<'info, CredentialData>,
+    
+    #[account(mut)]
+    pub user: Signer<'info>,
+    
+    pub system_program: Program<'info, System>,
+}
+
+#[account]
+pub struct CredentialData {
+    pub credential_id: [u8; 32],
+    pub subject_did: [u8; 32],
+    pub issuer_did: [u8; 32],
+    pub is_valid: bool,
+}
+```
+
+---
+
+### 6.5 Sui Integration
+
+**Approach**: Custom bridge + Sui Move modules
+
+**Sui Move Module**:
+```move
+module portableid::credentials {
+    use sui::object::{Self, UID};
+    use sui::tx_context::{Self, TxContext};
+    use sui::transfer;
+    use std::vector;
+    
+    /// Credential object (owned by subject)
+    struct Credential has key, store {
+        id: UID,
+        subject_did: vector<u8>,
+        issuer_did: vector<u8>,
+        credential_type: u8,
+        data_hash: vector<u8>,
+        issued_at: u64,
+        expires_at: u64,
+        is_active: bool,
+    }
+    
+    /// Shared object for verified proofs
+    struct VerifiedProofs has key {
+        id: UID,
+        proofs: vector<vector<u8>>,  // List of proof hashes
+    }
+    
+    /// Import credential from PortableID parachain
+    public entry fun import_credential(
+        subject_did: vector<u8>,
+        issuer_did: vector<u8>,
+        credential_type: u8,
+        data_hash: vector<u8>,
+        issued_at: u64,
+        expires_at: u64,
+        bridge_signature: vector<u8>,  // Signature from bridge
+        ctx: &mut TxContext
+    ) {
+        // 1. Verify bridge signature
+        // (Implementation depends on bridge design)
+        
+        // 2. Create credential object
+        let credential = Credential {
+            id: object::new(ctx),
+            subject_did,
+            issuer_did,
+            credential_type,
+            data_hash,
+            issued_at,
+            expires_at,
+            is_active: true,
+        };
+        
+        // 3. Transfer to subject
+        transfer::public_transfer(credential, tx_context::sender(ctx));
+    }
+    
+    /// Verify ZK proof (requires proof was verified on parachain)
+    public fun verify_proof(
+        verified_proofs: &VerifiedProofs,
+        proof_hash: vector<u8>,
+    ): bool {
+        vector::contains(&verified_proofs.proofs, &proof_hash)
+    }
+}
+```
+
+---
+
+### 6.6 Stacks Integration
+
+**Approach**: Clarity smart contracts + BTC-anchored finality
+
+**Clarity Contract**:
+```clarity
+;; PortableID Bridge on Stacks
+(define-map credentials
+  { credential-id: (buff 32) }
+  {
+    subject-did: (buff 32),
+    issuer-did: (buff 32),
+    credential-type: uint,
+    data-hash: (buff 32),
+    issued-at: uint,
+    expires-at: uint,
+    is-valid: bool
+  }
+)
+
+(define-map verified-proofs (buff 32) bool)
+
+;; Import credential from PortableID parachain
+(define-public (import-credential
+    (credential-id (buff 32))
+    (subject-did (buff 32))
+    (issuer-did (buff 32))
+    (credential-type uint)
+    (data-hash (buff 32))
+    (issued-at uint)
+    (expires-at uint)
+    (bridge-proof (buff 512))
+  )
+  (begin
+    ;; Verify bridge proof (signature from relayer)
+    (asserts! (verify-bridge-signature bridge-proof) (err u1))
+    
+    ;; Store credential
+    (map-set credentials
+      { credential-id: credential-id }
+      {
+        subject-did: subject-did,
+        issuer-did: issuer-did,
+        credential-type: credential-type,
+        data-hash: data-hash,
+        issued-at: issued-at,
+        expires-at: expires-at,
+        is-valid: true
+      }
+    )
+    
+    (ok true)
+  )
+)
+
+;; Verify ZK proof
+(define-read-only (verify-zk-proof (proof-hash (buff 32)))
+  (default-to false (map-get? verified-proofs proof-hash))
+)
+
+;; Helper: Verify bridge signature
+(define-private (verify-bridge-signature (proof (buff 512)))
+  ;; Implementation depends on bridge design
+  ;; For now, simplified
+  true
+)
+```
+
+---
+
+### 6.7 Cross-Chain Message Flow
+
+**Example: Credential Verification from Ethereum**
+
+```
+Step 1: User requests verification on Ethereum
+   User (Ethereum) → PortableIDBridge.sol → requestVerification()
+
+Step 2: Relayer picks up event
+   Event → Relayer monitors Ethereum → sees VerificationRequested
+
+Step 3: Relayer queries PortableID parachain
+   Relayer → Parachain RPC → query credential status
+
+Step 4: Parachain returns result
+   Parachain → Relayer → {is_valid: true, issuer: "University"}
+
+Step 5: Relayer submits result to Ethereum
+   Relayer → PortableIDBridge.sol → submitVerificationResult()
+
+Step 6: User reads result
+   User → PortableIDBridge.sol → getVerificationResult() → ✓ Valid
+```
+
+**Security Considerations**:
+1. **Relayer Trust**: Use multiple independent relayers + stake slashing
+2. **Finality**: Wait for GRANDPA finality on Polkadot before relaying
+3. **Replay Prevention**: Nonces in cross-chain messages
+4. **Light Clients**: Ethereum/Solana/Sui verify Polkadot state roots
+5. **Economic Security**: Relayer bonds ensure honest behavior
+
+---
+
+## 7. Consensus & Validation
+
+### 7.1 Parachain Consensus (Cumulus)
+
+**Block Production**: Aura (Authority Round)
+- Validators take turns producing blocks
+- Time slots (e.g., 12 seconds per block)
+- Deterministic selection based on slot number
+
+**Finality**: GRANDPA (via Relay Chain)
+- Byzantine fault tolerant finality gadget
+- Finalizes chains of blocks
+- 2/3+ of validators must agree
+
+**Parachain Validation**:
+```
+1. Collator produces block candidate
+2. Block sent to Relay Chain validators
+3. Validators execute block (Wasm runtime)
+4. Erasure coding for availability
+5. 2/3+ validators attest → block included
+6. GRANDPA finalizes after Relay Chain consensus
+```
+
+---
+
+### 7.2 Transaction Validation Flow
+
+```rust
+// Transaction enters mempool
+Transaction: issue_credential(subject_did, ...)
+    │
+    ▼
+// 1. Basic validation (signature, nonce, fees)
+validate_transaction()
+    │
+    ▼
+// 2. Transaction enters block (by collator)
+Block produced by Aura validator
+    │
+    ▼
+// 3. Block execution (deterministic)
+execute_block()
+    ├─> Call: issue_credential()
+    ├─> Storage reads/writes
+    ├─> Event emission
+    └─> State root updated
+    │
+    ▼
+// 4. Block sent to Relay Chain
+Collator → Relay Chain validators
+    │
+    ▼
+// 5. Relay Chain validation
+2/3+ validators execute block in Wasm
+Verify state root matches
+    │
+    ▼
+// 6. Block inclusion in Relay Chain
+Block reference added to Relay Chain
+    │
+    ▼
+// 7. Finalization (GRANDPA)
+GRANDPA finalizes Relay Chain block
+    │
+    ▼
+// 8. Parachain block finalized
+Transaction now irreversible
+```
+
+---
+
+### 7.3 State Transition Validation
+
+**Validity Conditions**:
+```rust
+// For credential issuance to be valid:
+fn validate_issue_credential(
+    issuer: AccountId,
+    subject_did: H256,
+    credential_type: CredentialType,
+) -> bool {
+    // 1. Iss
